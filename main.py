@@ -16,7 +16,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Fetch and save odds data.")
     parser.add_argument("--refresh", action="store_true", help="Refresh odds data")
     parser.add_argument(
-        "--print-table", action="store_true", help="Print algorithim table"
+        "--print-table", action="store_true", help="Print algorithm table"
     )
     parser.add_argument(
         "--split-week", type=int, default=16, help="Print by split week"
@@ -320,10 +320,10 @@ def print_comparison(algorithm_1, algorithm_2):
     changes_best_spread = generate_changes_for_picks(algorithm_1)
     changes_back_to_front = generate_changes_for_picks(algorithm_2)
 
-    print_table(algorithm_1, "Algorithim 1", differences, changes_best_spread)
+    print_table(algorithm_1, "Algorithm 1", differences, changes_best_spread)
     print_table(
         algorithm_2,
-        "Algorithim 2",
+        "Algorithm 2",
         differences,
         changes_back_to_front,
     )
