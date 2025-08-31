@@ -296,43 +296,6 @@ for event in events:
     print(f"Week {event.week}: {event.short_name} ({event.spread})")
 ```
 
-### EspnService
-
-Alternative data source using ESPN's API.
-
-```python
-class EspnService:
-    def __init__(self)
-    def fetch_events(self, season_year: int, starting_week: int = 1) -> List[EventOdds]
-    def fetch_json(self, url: str) -> dict
-```
-
-#### fetch_events()
-
-**Purpose**: Fetch NFL game data from ESPN API with averaged spreads.
-
-**Parameters**: Same as CBSSportsService
-
-**Process**:
-1. Fetches week data from ESPN API
-2. For each game, retrieves detailed event data
-3. Fetches odds data and calculates average spreads
-4. Handles missing or incomplete data gracefully
-
-**URL Pattern**:
-```
-http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/types/2/weeks/{week}/events
-```
-
-**Advantages**:
-- Structured JSON data
-- Multiple odds sources averaged
-- Comprehensive game metadata
-
-**Disadvantages**:
-- More complex API structure
-- Requires multiple HTTP requests per game
-- Potential for missing odds data
 
 ## Database Service
 
@@ -484,7 +447,6 @@ def check(self, event_id, short_name, spread):
 
 ### Data Parsing Errors
 - **CBS Sports**: Individual game parsing errors logged but don't stop processing
-- **ESPN API**: KeyError and general exceptions caught per game
 - **Missing Fields**: Error class tracks validation issues
 
 ### Database Errors
@@ -527,7 +489,6 @@ finally:
 ### Performance Considerations
 - Database queries filter by year to minimize data transfer
 - CBS Sports scraping processes weeks sequentially to be respectful
-- ESPN API requires multiple requests per game - consider rate limiting
 
 ### Testing and Validation
 - Validate data completeness after fetching

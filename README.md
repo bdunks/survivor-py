@@ -8,7 +8,7 @@ Survivor pools (also known as elimination pools) are fantasy football contests w
 
 ## Features
 
-- **Multi-source Data Fetching**: Retrieves NFL odds and spread data from CBS Sports and ESPN APIs
+- **Data Fetching**: Retrieves NFL odds and spread data from CBS Sports
 - **SQLite Database Storage**: Persistent storage of odds data with automatic table creation and data management
 - **Multiple Optimization Algorithms**:
   - **Best Spread**: Prioritizes teams with the highest point spreads (safest picks)
@@ -160,7 +160,6 @@ survivor-py/
 └── services/
     ├── __init__.py        # Service module initialization
     ├── cbssports.py       # CBS Sports data fetching service
-    ├── espn.py            # ESPN data fetching service (alternative)
     └── sqlite.py          # Database service and operations
 ```
 
@@ -175,21 +174,15 @@ survivor-py/
 - **Future Value Calculation**: Advanced metrics for team value assessment
 
 #### Services (`services/`)
-- **`CBSSportsService`**: Primary data source for NFL odds and spreads
-- **`EspnService`**: Alternative data source (ESPN API)
+- **`CBSSportsService`**: Data source for NFL odds and spreads
 - **`DatabaseService`**: SQLite database operations and data persistence
 
 ## Data Sources
 
-### Primary: CBS Sports
+### CBS Sports
 - **URL Pattern**: `https://www.cbssports.com/nfl/scoreboard/{year}/regular/{week}/`
 - **Data**: Point spreads, team matchups, game IDs
 - **Parsing**: HTML scraping using BeautifulSoup
-
-### Secondary: ESPN API
-- **URL Pattern**: `http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/...`
-- **Data**: Comprehensive game data with averaged spreads
-- **Format**: JSON API responses
 
 ## Configuration
 
@@ -274,8 +267,6 @@ db.close()
 #### "Error - Week N - Type - event_id"
 CBS Sports parsing failed for a specific game. Usually resolved by re-running the refresh.
 
-#### "KeyError encountered"
-ESPN API structure changed. Try using CBS Sports data source instead.
 
 ## Contributing
 

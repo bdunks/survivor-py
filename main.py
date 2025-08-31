@@ -292,7 +292,7 @@ def main():
         # Pick(team="KC", week=12),
     ]
 
-    # Use the EspnService class to fetch the data from ESPN if a refresh is requested
+    # Fetch fresh data from CBS Sports if a refresh is requested
     events: List[EventOdds] = []
     if refresh_requested:
         odds_service = CBSSportsService()
