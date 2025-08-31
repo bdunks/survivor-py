@@ -6,9 +6,13 @@ from models import EventOdds
 
 class DatabaseService:
     def __init__(self, db_name="odds_data.db"):
-        self.conn = sqlite3.connect(db_name)
-        self.cursor = self.conn.cursor()
-        self.setup_database()
+        try:
+            self.conn = sqlite3.connect(db_name)
+            self.cursor = self.conn.cursor()
+            self.setup_database()
+        except sqlite3.Error as e:
+            print(f"Error connecting to database {db_name}: {e}")
+            raise
 
     def setup_database(self):
         """Create the necessary tables if they don't exist."""
@@ -79,21 +83,25 @@ class DatabaseService:
 
     def fetch_odds_data(self, year: int) -> List[EventOdds]:
         """Fetch the averaged odds data from the database for a specific year."""
-        self.cursor.execute(
-            "SELECT * FROM averaged_odds WHERE season_year = ?", (year,)
-        )
-        rows = self.cursor.fetchall()
-        event_odds_list = [
-            EventOdds(
-                event_id=row[0],
-                season_year=row[1],
-                week=row[2],
-                short_name=row[5],
-                spread=row[6],
+        try:
+            self.cursor.execute(
+                "SELECT * FROM averaged_odds WHERE season_year = ?", (year,)
             )
-            for row in rows
-        ]
-        return event_odds_list
+            rows = self.cursor.fetchall()
+            event_odds_list = [
+                EventOdds(
+                    event_id=row[0],
+                    season_year=row[1],
+                    week=row[2],
+                    short_name=row[5],
+                    spread=row[6],
+                )
+                for row in rows
+            ]
+            return event_odds_list
+        except sqlite3.Error as e:
+            print(f"Error fetching odds data for year {year}: {e}")
+            return []
 
     def close(self):
         """Close the database connection."""

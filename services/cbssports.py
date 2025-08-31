@@ -21,9 +21,13 @@ class CBSSportsService:
             return Error("spread")
 
     def fetch_soup(self, url):
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        return BeautifulSoup(response.content, "html.parser")
+        try:
+            response = requests.get(url, timeout=30)  # Add timeout
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            return BeautifulSoup(response.content, "html.parser")
+        except requests.RequestException as e:
+            print(f"Error fetching data from {url}: {e}")
+            raise  # Re-raise to be handled by caller
 
     def fetch_events(self, season_year, starting_week=1):
         results = []
@@ -34,7 +38,13 @@ class CBSSportsService:
             print(f"Processing Week {week_number}")
 
             week_url = f"https://www.cbssports.com/nfl/scoreboard/{season_year}/regular/{week_number}/"
-            soup = self.fetch_soup(week_url)
+            try:
+                soup = self.fetch_soup(week_url)
+            except requests.RequestException as e:
+                print(f"Failed to fetch data for week {week_number}: {e}")
+                print("Skipping this week and continuing...")
+                error_count += 1
+                continue
 
             # Find all elements with class "single-score-card"
             score_cards = soup.find_all("div", class_="single-score-card")
@@ -92,5 +102,10 @@ class CBSSportsService:
         print(
             f"Processing complete. Total events processed: {len(results)}, Total errors: {error_count}"
         )
+        
+        # Provide helpful message if no data was retrieved
+        if len(results) == 0 and error_count > 0:
+            print("Warning: No data was retrieved. Please check your internet connection and try again.")
+            print("If the problem persists, CBS Sports may have changed their website format.")
 
         return results

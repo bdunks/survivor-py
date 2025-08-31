@@ -63,8 +63,12 @@ class PickOptimizer:
                 if len(picks) == 18:
                     break
 
-        def second_pass(sorted_events: List[EventOdds]):
+        def second_pass(sorted_events: List[EventOdds], depth: int = 0):
             nonlocal picks, picked_teams, picked_weeks
+            
+            # Prevent infinite recursion with depth limit
+            if depth > 50:  # Reasonable limit for NFL teams/weeks
+                return
 
             replacement_made = False
             for event in sorted_events:
@@ -91,7 +95,7 @@ class PickOptimizer:
                         replacement_made = True
             # Recursively call second_pass until no more replacements are made
             if replacement_made:
-                second_pass(sorted_events)
+                second_pass(sorted_events, depth + 1)
 
         # Add picks from the first half
         add_picks(sorted_first_half)
@@ -155,14 +159,14 @@ class PickOptimizer:
             and event.week <= split_week
         ]
 
-        # Count the number of favorable events
+        # Count all future events for the team and calculate favorability scores
         favorable_event_count = 0
         favorability_scores = []
 
         for event in teams_future_events:
-            if team == event.favored_team:
-                favorable_event_count += 1
-                favorability_scores.append(abs(event.spread))
+            favorable_event_count += 1
+            # Use spread magnitude regardless of favored status
+            favorability_scores.append(abs(event.spread))
 
         # Calculate the total degree of favorability
         total_favorability = sum(favorability_scores)
@@ -220,12 +224,12 @@ class PickOptimizer:
             power = 2.5  # Adjust this value to control the drop-off rate
 
             # Calculate the future value for the team from the current week onwards
-            future_value = (
-                self.calculate_future_value(
-                    event.favored_team, event.week + 1, events, split_week
-                )
-                or 1
+            future_value = self.calculate_future_value(
+                event.favored_team, event.week + 1, events, split_week
             )
+            # Prevent division by zero
+            if future_value == 0:
+                future_value = 1
             # Calculate the scaling factor, ramping down to split week, and ignoring after split week
             scaling_factor = 0.0
             if event.week <= split_week:

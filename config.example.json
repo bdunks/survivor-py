@@ -1,0 +1,8 @@
+{
+  "current_week": 4,
+  "picks": [
+    { "team": "SEA", "week": 1, "spread": 6.0 },
+    { "team": "HOU", "week": 2, "spread": 6.5 },
+    { "team": "CLE", "week": 3, "spread": 6.5 }
+  ]
+}

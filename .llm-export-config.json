@@ -12,11 +12,10 @@
     ".ini"
   ],
   "ignore_patterns": [
+    "llm_context",
     "__pycache__",
     ".git",
     ".venv",
-    "venv",
-    "env",
     ".pytest_cache",
     ".mypy_cache",
     ".coverage",

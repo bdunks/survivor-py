@@ -1,11 +1,15 @@
 import argparse
 import csv
+import json
+import os
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
+
+import termcolor
 
 from models import EventOdds, Pick
 from optimizer import PickOptimizer
-from services import DatabaseService, CBSSportsService
+from services import CBSSportsService, DatabaseService
 
 
 def parse_arguments():
@@ -29,6 +33,89 @@ def parse_arguments():
         help="Year for which to fetch odds data",
     )
     return parser.parse_args()
+
+
+def validate_picks(picks: List[Pick]) -> None:
+    """Validate user picks for common errors."""
+    weeks_used = set()
+    for pick in picks:
+        if not (1 <= pick.week <= 18):
+            raise ValueError(f"Invalid week: {pick.week}. Week must be between 1 and 18.")
+        if pick.week in weeks_used:
+            raise ValueError(f"Duplicate week found: {pick.week}. Each week can only be used once.")
+        weeks_used.add(pick.week)
+        
+        # Basic team name validation (3 character abbreviation)
+        if not isinstance(pick.team, str) or len(pick.team) != 3:
+            raise ValueError(f"Invalid team abbreviation: {pick.team}. Must be 3 characters.")
+
+
+def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and normalize configuration data."""
+    # Validate current_week
+    if not isinstance(config.get('current_week'), int):
+        print("Warning: current_week should be an integer, defaulting to 1")
+        config['current_week'] = 1
+    
+    if not (1 <= config['current_week'] <= 18):
+        print(f"Warning: current_week {config['current_week']} invalid, defaulting to 1")
+        config['current_week'] = 1
+    
+    # Ensure picks is a list
+    if 'picks' not in config:
+        config['picks'] = []
+    elif not isinstance(config['picks'], list):
+        print("Warning: picks should be a list, defaulting to empty list")
+        config['picks'] = []
+    
+    return config
+
+
+def load_config() -> Dict[str, Any]:
+    """Load configuration from config.json file."""
+    config_path = "config.json"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            config = validate_config(config)
+            
+            # Convert picks dictionaries to Pick objects
+            picks = []
+            for pick_data in config.get('picks', []):
+                try:
+                    if isinstance(pick_data, dict):
+                        pick = Pick(
+                            team=pick_data['team'],
+                            week=pick_data['week'],
+                            spread=pick_data.get('spread', 0.0)
+                        )
+                        picks.append(pick)
+                except (KeyError, TypeError) as e:
+                    print(f"Warning: Invalid pick data {pick_data}: {e}")
+            
+            # Validate all picks
+            try:
+                validate_picks(picks)
+            except ValueError as e:
+                print(f"Configuration error: {e}")
+                picks = []
+            
+            return {
+                'current_week': config['current_week'],
+                'user_picks': picks
+            }
+        
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Warning: Could not load config.json: {e}")
+            print("Using default configuration")
+    
+    # Return default configuration
+    return {
+        'current_week': 1,
+        'user_picks': []
+    }
 
 
 def print_to_console(all_picks):
@@ -168,8 +255,6 @@ def compare_picks(
             print()
 
 
-import termcolor
-
 # Constants for colors and formatting
 DIFF_COLOR = "red"
 CHANGE_COLOR = "yellow"
@@ -275,22 +360,10 @@ def main():
     compare_picks_requested = args.compare_picks
     export_requested = args.export
 
-    # set user defined picks:
-    current_week = 1
-    user_defined_picks = [
-        # Pick(team="SEA", week=1, spread=6),
-        # Pick(team="HOU", week=2, spread=6.5),
-        # Pick(team="CLE", week=3, spread=6.5),  # LOST
-        # Pick(team="CLE", week=4, spread=6.5),
-        # Pick(team="MIA", week=5),
-        # Pick(team="LAR", week=6),
-        # Pick(team="SEA", week=7),
-        # Pick(team="BAL", week=8),
-        # Pick(team="CLE", week=9),
-        # Pick(team="DAL", week=10),
-        # Pick(team="DET", week=11),
-        # Pick(team="KC", week=12),
-    ]
+    # Load configuration from config.json
+    config = load_config()
+    current_week = config['current_week']
+    user_defined_picks = config['user_picks']
 
     # Fetch fresh data from CBS Sports if a refresh is requested
     events: List[EventOdds] = []
