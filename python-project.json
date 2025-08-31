@@ -1,0 +1,43 @@
+{
+  "file_extensions": [
+    ".py",
+    ".pyi",
+    ".pyx",
+    ".md",
+    ".txt",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".cfg",
+    ".ini"
+  ],
+  "ignore_patterns": [
+    "__pycache__",
+    ".git",
+    ".venv",
+    "venv",
+    "env",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".coverage",
+    "htmlcov",
+    "dist",
+    "build",
+    "*.egg-info",
+    ".tox",
+    ".nox",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".env",
+    ".env.local"
+  ],
+  "max_file_size_mb": 2.0,
+  "include_hidden": false,
+  "max_depth": null,
+  "context": "You are an expert Python developer with deep knowledge of Python best practices, PEP standards, popular frameworks (Django, Flask, FastAPI), data science libraries (NumPy, Pandas, scikit-learn), async programming, and Python ecosystem tools. Your task is to conduct a comprehensive code review of the following Python project. Focus on code quality, performance, security, adherence to Pythonic principles, and framework-specific best practices.",
+  "request": "Based on the Python code provided above, perform the following actions:\n\n1. Review code for adherence to PEP 8 style guidelines, PEP 484 type hints, and Pythonic coding practices including proper use of list comprehensions, context managers, and generators.\n2. Identify potential performance bottlenecks, inefficient algorithms, memory usage issues, and suggest optimizations including appropriate use of built-in functions and libraries.\n3. Check for security vulnerabilities such as SQL injection, command injection, unsafe eval/exec usage, inadequate input validation, and improper handling of sensitive data.\n4. Analyze code structure for maintainability, proper exception handling, logging practices, and adherence to SOLID principles.\n5. Review dependencies, package structure, configuration management, and testing strategies for best practices.\n6. Present your findings in a detailed markdown format that can guide automated code improvements and refactoring.",
+  "verbose": false,
+  "log_level": "INFO"
+}
