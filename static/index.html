@@ -5,67 +5,146 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NFL Survivor Pool Optimizer</title>
-  <!-- Pico.css for styling -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
   <style>
+    :root {
+      --user-pick-bg: #004d40;
+      /* Dark Teal */
+      --user-pick-border: #4db6ac;
+      /* Light Teal */
+      --suggested-pick-border: #f9a825;
+      /* Yellow */
+      --disabled-cell-bg: rgba(45, 55, 72, 0.7);
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 2rem;
     }
 
     main.container {
-      max-width: 1400px;
+      max-width: 95%;
+      padding: 1rem;
     }
 
-    .grid {
-      grid-template-columns: 1fr 2fr;
-      gap: 2rem;
-    }
-
-    .controls-grid {
+    .controls-container {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1rem;
-      margin-bottom: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      align-items: end;
+      margin-bottom: 1.5rem;
     }
 
-    .user-picks-grid {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 0.5rem 1rem;
-      align-items: center;
-      max-height: 400px;
-      overflow-y: auto;
+    .survivor-grid-container {
+      overflow-x: auto;
     }
 
-    #resultsTable th,
-    #resultsTable td {
+    .survivor-grid {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .survivor-grid th,
+    .survivor-grid td {
+      border: 1px solid #4a5568;
+      padding: 0;
       text-align: center;
-      padding: 0.5rem;
+      height: 60px;
+      min-width: 90px;
+    }
+
+    .survivor-grid th {
+      background-color: #2d3748;
       font-size: 0.9em;
-      white-space: nowrap;
     }
 
-    /* Color coding for table cells */
-    .pick-diff {
-      background-color: #581c1c;
-      /* Muted Red */
+    .survivor-grid th:first-child {
+      /* Team name header */
+      min-width: 120px;
+      background-color: #1a202c;
+      position: sticky;
+      left: 0;
+      z-index: 10;
     }
 
-    .pick-change {
-      background-color: #5f4c11;
-      /* Muted Yellow */
+    .survivor-grid td:first-child {
+      /* Sticky team name column */
+      background-color: #1a202c;
+      position: sticky;
+      left: 0;
+      z-index: 10;
+      font-weight: bold;
     }
 
-    .pick-same {
-      background-color: #374151;
-      /* Default dark background */
+    .grid-cell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 0.85em;
     }
 
-    /* Loading spinner */
-    .loader {
-      display: none;
-      margin-left: 1rem;
+    .grid-cell:hover {
+      background-color: #4a5568;
+    }
+
+    .grid-cell.user-pick {
+      background-color: var(--user-pick-bg);
+      border: 2px solid var(--user-pick-border);
+      color: white;
+      cursor: not-allowed;
+    }
+
+    .grid-cell.user-pick:hover {
+      background-color: var(--user-pick-bg);
+    }
+
+    .grid-cell.suggested-pick {
+      border: 2px solid var(--suggested-pick-border);
+      box-shadow: 0 0 10px var(--suggested-pick-border);
+    }
+
+    .grid-cell.disabled {
+      background-color: var(--disabled-cell-bg);
+      color: #718096;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .grid-cell.disabled:hover {
+      background-color: var(--disabled-cell-bg);
+    }
+
+    .opponent {
+      font-weight: bold;
+    }
+
+    .spread {
+      font-size: 0.9em;
+      color: #a0aec0;
+    }
+
+    .bye-week {
+      background-color: var(--disabled-cell-bg);
+      color: #718096;
+      font-style: italic;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    /* Loading states */
+    .loading {
+      opacity: 0.6;
+    }
+
+    /* Export button positioning */
+    .export-controls {
+      text-align: right;
+      margin-bottom: 1rem;
     }
   </style>
 </head>
@@ -74,84 +153,68 @@
   <main class="container">
     <header>
       <h1>NFL Survivor Pool Optimizer</h1>
-      <p>Select your existing picks and use the controls to find the optimal path forward.</p>
+      <p>Click a cell to lock in a pick. The optimizer will suggest the best path forward based on your choices.</p>
     </header>
 
-    <div class="grid">
-      <!-- Left Panel: Controls & User Picks -->
-      <aside>
-        <article>
-          <header><strong>Configuration</strong></header>
-          <div class="controls-grid">
-            <div>
-              <label for="yearSelect">Season Year</label>
-              <select id="yearSelect">
-                <option>2025</option>
-                <option>2024</option>
-                <option>2023</option>
-              </select>
-            </div>
-            <div>
-              <label for="refreshDataBtn">Refresh Data</label>
-              <button id="refreshDataBtn" aria-busy="false">
-                Refresh From CBS
-              </button>
-            </div>
-          </div>
+    <article class="controls-container">
+      <div>
+        <label for="yearSelect">Season Year</label>
+        <select id="yearSelect">
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+        </select>
+      </div>
+      <div>
+        <label for="algorithmSelect">Algorithm</label>
+        <select id="algorithmSelect">
+          <option value="best-spread">Best Spread</option>
+          <option value="weighted-future-value">Weighted Future Value</option>
+          <option value="back-to-front">Back-to-Front</option>
+        </select>
+      </div>
+      <div>
+        <label for="splitWeekSlider">Split Week: <span id="splitWeekValue">10</span></label>
+        <input type="range" min="1" max="18" value="10" id="splitWeekSlider">
+      </div>
+      <div>
+        <button id="refreshDataBtn" aria-busy="false">Refresh Data</button>
+        <button id="resetBtn" class="secondary outline">Reset Picks</button>
+      </div>
+    </article>
 
-          <h5 style="margin-bottom: 0.5rem;">User-Defined Picks</h5>
-          <div id="userPicks" class="user-picks-grid">
-            <!-- User picks will be dynamically generated here -->
-          </div>
+    <div class="export-controls">
+      <button id="exportCsvBtn" class="outline">Export to CSV</button>
+    </div>
 
-        </article>
-      </aside>
-
-      <!-- Right Panel: Algorithm Results -->
-      <section>
-        <article>
-          <header><strong>Optimization Results</strong></header>
-          <div class="controls-grid">
-            <div>
-              <label for="splitWeekSlider">Split Week: <span id="splitWeekValue">10</span></label>
-              <input type="range" min="1" max="18" value="10" id="splitWeekSlider">
-            </div>
-          </div>
-
-          <button id="exportCsvBtn" class="outline">Export to CSV</button>
-
-          <div class="overflow-auto" style="margin-top: 1rem;">
-            <table id="resultsTable">
-              <thead>
-                <!-- Header will be dynamically generated -->
-              </thead>
-              <tbody>
-                <!-- Results will be dynamically generated -->
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
+    <div class="survivor-grid-container">
+      <table class="survivor-grid" id="survivorGrid">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </main>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // --- DOM ELEMENTS ---
-      const userPicksContainer = document.getElementById('userPicks');
+      const survivorGridHead = document.querySelector('#survivorGrid thead');
+      const survivorGridBody = document.querySelector('#survivorGrid tbody');
       const splitWeekSlider = document.getElementById('splitWeekSlider');
       const splitWeekValue = document.getElementById('splitWeekValue');
-      const resultsTableHead = document.querySelector('#resultsTable thead');
-      const resultsTableBody = document.querySelector('#resultsTable tbody');
+      const algorithmSelect = document.getElementById('algorithmSelect');
       const refreshDataBtn = document.getElementById('refreshDataBtn');
+      const resetBtn = document.getElementById('resetBtn');
       const yearSelect = document.getElementById('yearSelect');
       const exportCsvBtn = document.getElementById('exportCsvBtn');
 
       // --- CONSTANTS & STATE ---
-      let NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS"];
+      const NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS"];
       const WEEKS = 18;
+
+      let scheduleData = {}; // To hold the full season schedule
+      let userPicks = {}; // { week: team, ... }
       let currentConfig = null;
-      let previousOptimizationData = null;
 
       // --- API FUNCTIONS ---
       async function fetchConfig() {
@@ -165,15 +228,14 @@
         }
       }
 
-      async function fetchTeams() {
+      async function fetchEvents(year) {
         try {
-          const response = await fetch('/api/teams');
+          const response = await fetch(`/api/data/events?year=${year}`);
           if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          const data = await response.json();
-          return data.teams;
+          return await response.json();
         } catch (error) {
-          console.warn('Failed to load teams from API, using defaults:', error.message);
-          return NFL_TEAMS;
+          showError(`Failed to load events: ${error.message}`);
+          return [];
         }
       }
 
@@ -239,21 +301,23 @@
           const result = await response.json();
           showSuccess(`Refreshed ${result.events_count} events for ${result.year}`);
           
-          // Refresh optimization after data update
+          // Refresh schedule data and grid after data update
+          await loadScheduleData();
+          renderGrid();
           await runOptimization();
           
         } catch (error) {
           showError(`Failed to refresh data: ${error.message}`);
         } finally {
           refreshDataBtn.setAttribute('aria-busy', 'false');
-          refreshDataBtn.textContent = 'Refresh From CBS';
+          refreshDataBtn.textContent = 'Refresh Data';
         }
       }
 
-      async function getOptimization(splitWeek) {
+      async function getOptimization(splitWeek, algorithm) {
         const year = parseInt(yearSelect.value);
         try {
-          const response = await fetch(`/api/optimize/${splitWeek}?year=${year}`);
+          const response = await fetch(`/api/optimize/${splitWeek}/${algorithm}?year=${year}`);
           if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to get optimization');
@@ -268,12 +332,13 @@
       async function exportToCsv() {
         const splitWeek = parseInt(splitWeekSlider.value);
         const year = parseInt(yearSelect.value);
+        const algorithm = algorithmSelect.value;
         
         try {
           exportCsvBtn.setAttribute('aria-busy', 'true');
           exportCsvBtn.textContent = 'Exporting...';
           
-          const response = await fetch(`/api/export/csv?split_week=${splitWeek}&algorithm=all&year=${year}`);
+          const response = await fetch(`/api/export/csv?split_week=${splitWeek}&algorithm=${algorithm}&year=${year}`);
           
           if (!response.ok) {
             const error = await response.json();
@@ -286,7 +351,7 @@
           const a = document.createElement('a');
           a.style.display = 'none';
           a.href = url;
-          a.download = `survivor_picks_${year}_week${splitWeek}_all.csv`;
+          a.download = `survivor_picks_${year}_week${splitWeek}_${algorithm}.csv`;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -304,187 +369,223 @@
 
       // --- UTILITY FUNCTIONS ---
       function showError(message) {
-        // Simple error display - could be enhanced with a proper notification system
         console.error(message);
         alert(`Error: ${message}`);
       }
 
       function showSuccess(message) {
         console.log(message);
-        // Could add a success notification here
       }
+
+      // --- DATA PROCESSING ---
+      async function loadScheduleData() {
+        const year = parseInt(yearSelect.value);
+        const events = await fetchEvents(year);
+        
+        // Convert events to schedule data format
+        scheduleData = {};
+        NFL_TEAMS.forEach(team => {
+          scheduleData[team] = {};
+        });
+
+        events.forEach(event => {
+          const homeTeam = event.home_team;
+          const awayTeam = event.away_team;
+          const week = event.week;
+          const spread = event.spread;
+          const favoredTeam = event.favored_team;
+
+          // Add game for home team
+          if (scheduleData[homeTeam]) {
+            scheduleData[homeTeam][week] = {
+              opponent: `vs ${awayTeam}`,
+              spread: homeTeam === favoredTeam ? Math.abs(spread) : -Math.abs(spread),
+              isFavored: homeTeam === favoredTeam
+            };
+          }
+
+          // Add game for away team
+          if (scheduleData[awayTeam]) {
+            scheduleData[awayTeam][week] = {
+              opponent: `@ ${homeTeam}`,
+              spread: awayTeam === favoredTeam ? Math.abs(spread) : -Math.abs(spread),
+              isFavored: awayTeam === favoredTeam
+            };
+          }
+        });
+      }
+
+      // --- GRID RENDERING ---
+      function renderGrid() {
+        // Header
+        let headerHtml = '<tr><th>Team</th>';
+        for (let i = 1; i <= WEEKS; i++) headerHtml += `<th>Week ${i}</th>`;
+        headerHtml += '</tr>';
+        survivorGridHead.innerHTML = headerHtml;
+
+        // Body
+        let bodyHtml = '';
+        NFL_TEAMS.forEach(team => {
+          bodyHtml += `<tr><td>${team}</td>`;
+          for (let week = 1; week <= WEEKS; week++) {
+            const game = scheduleData[team]?.[week];
+            if (game) {
+              const spreadDisplay = game.spread > 0 ? `+${game.spread.toFixed(1)}` : game.spread.toFixed(1);
+              bodyHtml += `
+                <td data-team="${team}" data-week="${week}">
+                  <div class="grid-cell">
+                    <span class="opponent">${game.opponent}</span>
+                    <span class="spread">${spreadDisplay}</span>
+                  </div>
+                </td>`;
+            } else {
+              bodyHtml += `<td><div class="grid-cell bye-week">BYE</div></td>`;
+            }
+          }
+          bodyHtml += '</tr>';
+        });
+        survivorGridBody.innerHTML = bodyHtml;
+        addGridEventListeners();
+        updateGridState();
+      }
+
+      function updateGridState() {
+        // Convert user picks to week->team format
+        const pickedTeams = new Set();
+        const pickedWeeks = new Set();
+        const weekToTeam = {};
+
+        if (currentConfig && currentConfig.user_picks) {
+          currentConfig.user_picks.forEach(pick => {
+            pickedTeams.add(pick.team);
+            pickedWeeks.add(pick.week);
+            weekToTeam[pick.week] = pick.team;
+          });
+        }
+
+        userPicks = weekToTeam;
+
+        // Update grid cell states
+        document.querySelectorAll('.grid-cell').forEach(cell => {
+          if (cell.classList.contains('bye-week')) return;
+
+          cell.classList.remove('user-pick', 'disabled', 'suggested-pick');
+          const week = parseInt(cell.parentElement.dataset.week);
+          const team = cell.parentElement.dataset.team;
+
+          if (weekToTeam[week] === team) {
+            cell.classList.add('user-pick');
+          } else if (pickedTeams.has(team) || pickedWeeks.has(week)) {
+            cell.classList.add('disabled');
+          }
+        });
+
+        runOptimization();
+      }
+
+      // --- OPTIMIZATION & SUGGESTIONS ---
+      async function runOptimization() {
+        const splitWeek = parseInt(splitWeekSlider.value);
+        const algorithm = algorithmSelect.value;
+        
+        try {
+          // Clear previous suggestions
+          document.querySelectorAll('.suggested-pick').forEach(cell => {
+            cell.classList.remove('suggested-pick');
+          });
+
+          const optimizationData = await getOptimization(splitWeek, algorithm);
+          if (optimizationData && optimizationData.picks) {
+            renderOptimizerSuggestions(optimizationData.picks);
+          }
+        } catch (error) {
+          console.error('Failed to run optimization:', error);
+        }
+      }
+
+      function renderOptimizerSuggestions(picks) {
+        picks.forEach(pick => {
+          const cell = document.querySelector(`td[data-team="${pick.team}"][data-week="${pick.week}"] .grid-cell`);
+          if (cell && !cell.classList.contains('user-pick') && !cell.classList.contains('disabled')) {
+            cell.classList.add('suggested-pick');
+          }
+        });
+      }
+
+      // --- EVENT LISTENERS ---
+      async function handleCellClick(e) {
+        const cellElement = e.currentTarget.parentElement;
+        const team = cellElement.dataset.team;
+        const week = parseInt(cellElement.dataset.week);
+        const gridCell = e.currentTarget;
+
+        if (gridCell.classList.contains('bye-week') || gridCell.classList.contains('disabled')) {
+          return;
+        }
+
+        if (gridCell.classList.contains('user-pick')) {
+          // Un-picking
+          await clearPick(week);
+        } else {
+          // Picking
+          await updatePick(team, week);
+        }
+        
+        // Refresh config and grid state
+        currentConfig = await fetchConfig();
+        updateGridState();
+      }
+
+      function addGridEventListeners() {
+        document.querySelectorAll('.grid-cell').forEach(cell => {
+          cell.addEventListener('click', handleCellClick);
+        });
+      }
+
+      // Control event listeners
+      splitWeekSlider.addEventListener('input', (e) => {
+        splitWeekValue.textContent = e.target.value;
+      });
+
+      splitWeekSlider.addEventListener('change', runOptimization);
+      algorithmSelect.addEventListener('change', runOptimization);
+      yearSelect.addEventListener('change', async () => {
+        await loadScheduleData();
+        renderGrid();
+      });
+
+      resetBtn.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to reset all picks?')) {
+          // Clear all picks
+          const picks = Object.keys(userPicks);
+          for (const week of picks) {
+            await clearPick(parseInt(week));
+          }
+          currentConfig = await fetchConfig();
+          updateGridState();
+        }
+      });
+
+      refreshDataBtn.addEventListener('click', refreshData);
+      exportCsvBtn.addEventListener('click', exportToCsv);
 
       // --- INITIALIZATION ---
       async function init() {
         try {
-          // Load teams from API
-          NFL_TEAMS = await fetchTeams();
-          
           // Load current configuration
           currentConfig = await fetchConfig();
           
-          // Populate user picks grid
-          await populateUserPicksGrid();
+          // Load schedule data
+          await loadScheduleData();
           
-          // Populate results table header
-          let headerHtml = '<tr><th>Algorithm</th>';
-          for (let i = 1; i <= WEEKS; i++) {
-            headerHtml += `<th>Wk ${i}</th>`;
-          }
-          headerHtml += '<th>Total Spread</th></tr>';
-          resultsTableHead.innerHTML = headerHtml;
-
-          // Load initial optimization
-          await runOptimization();
+          // Render grid
+          renderGrid();
           
         } catch (error) {
           showError(`Failed to initialize application: ${error.message}`);
         }
       }
 
-      async function populateUserPicksGrid() {
-        userPicksContainer.innerHTML = '';
-        
-        for (let i = 1; i <= WEEKS; i++) {
-          const weekLabel = document.createElement('label');
-          weekLabel.setAttribute('for', `week-${i}-select`);
-          weekLabel.textContent = `Week ${i}`;
-
-          const select = document.createElement('select');
-          select.id = `week-${i}-select`;
-          select.dataset.week = i;
-          
-          const defaultOption = document.createElement('option');
-          defaultOption.value = "";
-          defaultOption.textContent = "Select Team";
-          select.appendChild(defaultOption);
-
-          NFL_TEAMS.forEach(team => {
-            const option = document.createElement('option');
-            option.value = team;
-            option.textContent = team;
-            select.appendChild(option);
-          });
-
-          // Set current value if user has a pick for this week
-          if (currentConfig && currentConfig.user_picks) {
-            const existingPick = currentConfig.user_picks.find(pick => pick.week === i);
-            if (existingPick) {
-              select.value = existingPick.team;
-            }
-          }
-
-          select.addEventListener('change', async (e) => {
-            const week = parseInt(e.target.dataset.week);
-            const team = e.target.value;
-            
-            if (team) {
-              await updatePick(team, week);
-            } else {
-              await clearPick(week);
-            }
-            
-            // Refresh config and optimization
-            currentConfig = await fetchConfig();
-            await runOptimization();
-          });
-          
-          userPicksContainer.appendChild(weekLabel);
-          userPicksContainer.appendChild(select);
-        }
-      }
-
-      // --- CORE LOGIC ---
-      async function runOptimization() {
-        const splitWeek = parseInt(splitWeekSlider.value);
-        
-        try {
-          const optimizationData = await getOptimization(splitWeek);
-          if (optimizationData) {
-            renderResults(optimizationData);
-            previousOptimizationData = optimizationData;
-          }
-        } catch (error) {
-          console.error('Failed to run optimization:', error);
-          // Clear table on error
-          resultsTableBody.innerHTML = '<tr><td colspan="20">Failed to load optimization data</td></tr>';
-        }
-      }
-
-      function renderResults(data) {
-        let tableBodyHtml = '';
-        
-        // Get previous split week data for comparison
-        const currentSplitWeek = parseInt(splitWeekSlider.value);
-        let previousSplitWeekData = null;
-        
-        if (previousOptimizationData && previousOptimizationData.split_week === currentSplitWeek - 1) {
-          previousSplitWeekData = previousOptimizationData;
-        }
-
-        Object.keys(data.algorithms).forEach(algoKey => {
-          const algoData = data.algorithms[algoKey];
-          const picks = algoData.picks;
-          const prevPicksForAlgo = previousSplitWeekData ? previousSplitWeekData.algorithms[algoKey] : null;
-
-          let rowHtml = `<tr><td>${algoData.algorithm}</td>`;
-
-          // Create a week-indexed map for easier lookup
-          const picksByWeek = {};
-          picks.forEach(pick => {
-            picksByWeek[pick.week] = pick;
-          });
-
-          for (let week = 1; week <= WEEKS; week++) {
-            const pick = picksByWeek[week];
-            let cellClass = 'pick-same';
-            
-            if (pick) {
-              // Check for differences against other algorithms for the same week
-              const otherAlgos = Object.keys(data.algorithms).filter(name => name !== algoKey);
-              const isDifferent = otherAlgos.some(otherAlgoKey => {
-                const otherAlgoPicks = data.algorithms[otherAlgoKey].picks;
-                const otherPick = otherAlgoPicks.find(p => p.week === week);
-                return otherPick && otherPick.team !== pick.team;
-              });
-
-              if (isDifferent) {
-                cellClass = 'pick-diff';
-              }
-              // Check for changes from the previous split week for this algorithm
-              else if (prevPicksForAlgo) {
-                const prevPick = prevPicksForAlgo.picks.find(p => p.week === week);
-                if (prevPick && prevPick.team !== pick.team) {
-                  cellClass = 'pick-change';
-                }
-              }
-
-              const spread = pick.spread ? pick.spread.toFixed(1) : '--';
-              rowHtml += `<td class="${cellClass}"><strong>${pick.team}</strong><br><small>(${spread})</small></td>`;
-            } else {
-              rowHtml += `<td class="${cellClass}">--</td>`;
-            }
-          }
-
-          rowHtml += `<td>${algoData.total_spread.toFixed(1)}</td></tr>`;
-          tableBodyHtml += rowHtml;
-        });
-        
-        resultsTableBody.innerHTML = tableBodyHtml;
-      }
-
-      // --- EVENT LISTENERS ---
-      splitWeekSlider.addEventListener('input', (e) => {
-        splitWeekValue.textContent = e.target.value;
-      });
-
-      splitWeekSlider.addEventListener('change', runOptimization);
-
-      refreshDataBtn.addEventListener('click', refreshData);
-
-      exportCsvBtn.addEventListener('click', exportToCsv);
-
-      // --- START ---
       init();
     });
   </script>
