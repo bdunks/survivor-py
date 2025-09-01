@@ -4,32 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based NFL survivor pool optimizer that fetches odds data from CBS Sports and provides algorithmic strategies for team selection. The application helps users optimize their picks across the entire 18-week NFL regular season using three different algorithms.
+This is a comprehensive NFL survivor pool optimizer with both **web interface** and **command-line interface**. The application fetches odds data from CBS Sports and provides algorithmic strategies for team selection using three different optimization algorithms across the entire 18-week NFL regular season.
 
 ## Development Commands
 
-### Core Commands
+### Web Interface (Primary)
 
 ```bash
-# Install dependencies
-pip install requests termcolor beautifulsoup4
+# Install dependencies (UV recommended)
+uv add fastapi uvicorn[standard] pydantic python-multipart requests termcolor beautifulsoup4
 
-# Run the application with help
+# Start web server for development
+uvicorn app:app --reload --host 127.0.0.1 --port 8000
+
+# Access web interface
+# http://127.0.0.1:8000/
+
+# Access API documentation  
+# http://127.0.0.1:8000/docs
+```
+
+### Command Line Interface (Legacy)
+
+```bash
+# Run CLI application with help
 python main.py --help
 
-# Refresh odds data from CBS Sports
+# Configuration management
+python main.py --status
+python main.py --set-week 5
+python main.py --add-pick "SEA:1:6.0"
+python main.py --clear-pick 1
+
+# Data operations
 python main.py --refresh --year 2024
 
-# View algorithm comparison table
+# Analysis and visualization
 python main.py --print-table
-
-# Analyze specific week
 python main.py --split-week 10
-
-# Compare algorithms
 python main.py --compare
-
-# Export data to CSV
 python main.py --export
 ```
 
@@ -47,13 +60,34 @@ ruff check .
 
 ## Architecture
 
+### Web Application Components
+
+**FastAPI Application (`app.py`)**
+
+- REST API with automatic OpenAPI documentation
+- Static file serving for web interface  
+- Complete API endpoints for configuration, optimization, and data management
+- Type-safe request/response validation using Pydantic
+
+**API Models (`api_models.py`)**
+
+- Pydantic models for API validation: `ConfigResponse`, `PickRequest`, `OptimizationResponse`
+- Input validation for team codes, weeks, and parameters
+- Structured error responses
+
+**Frontend (`static/index.html`)**
+
+- Modern responsive web interface using Pico CSS
+- Real-time JavaScript integration with FastAPI backend
+- Interactive user pick management and split week analysis
+
 ### Core Components
 
-**Main Entry Point (`main.py`)**
+**CLI Entry Point (`main.py`)**
 
-- CLI argument parsing and command orchestration
-- Contains user configuration variables (`current_week`, `user_defined_picks`)
-- Handles data export and console output formatting
+- Command-line interface with argument parsing
+- Configuration management via CLI commands
+- Legacy console output and CSV export
 
 **Data Models (`models.py`)**
 
@@ -74,26 +108,42 @@ ruff check .
 
 ### Data Flow
 
+**Web Interface:**
+1. User interactions → FastAPI endpoints → Core services
+2. Configuration automatically saved to `config.json`
+3. Real-time optimization results returned as JSON
+4. CSV export downloads generated on-demand
+
+**CLI Interface:**
 1. CBS Sports scraper fetches odds → SQLite database
 2. Database provides events to optimizer
 3. Optimizer applies algorithms with user-defined picks
 4. Results exported to console tables or CSV files
 
-### Key Configuration Points
+### Configuration Management
 
-**User Picks (`main.py`)**
+**Web Interface (Recommended):**
+- Configuration managed via web UI and automatically saved to `config.json`
+- User picks added through dropdown menus
+- Real-time persistence and validation
 
-```python
-user_defined_picks = [
-    Pick(team="SEA", week=1, spread=6.0),
-    # Add existing picks here
-]
+**CLI Configuration:**
+```bash
+# Configuration commands
+python main.py --status
+python main.py --set-week 5
+python main.py --add-pick "SEA:1:6.0"
+python main.py --clear-pick 1
 ```
 
-**Current Week (`main.py`)**
-
-```python
-current_week = 4  # Update weekly
+**Configuration File (`config.json`):**
+```json
+{
+  "current_week": 4,
+  "picks": [
+    {"team": "SEA", "week": 1, "spread": 6.0}
+  ]
+}
 ```
 
 ## Database Schema
@@ -110,17 +160,46 @@ SQLite database (`odds_data.db`) with `averaged_odds` table:
 
 Core dependencies (requirements.txt):
 
-- `requests`: HTTP client for CBS Sports API
-- `termcolor`: Console output coloring
+**Web Interface:**
+- `fastapi`: Modern web framework for APIs
+- `uvicorn[standard]`: ASGI server for FastAPI
+- `pydantic`: Data validation using Python type hints
+- `python-multipart`: Form data parsing
+
+**Core Application:**
+- `requests`: HTTP client for CBS Sports data
+- `termcolor`: Console output coloring (CLI only)
 - `beautifulsoup4`: HTML parsing for web scraping
 
 ## Testing
 
-The project currently uses manual testing workflows:
+### Web Interface Testing
+
+```bash
+# Start development server
+uvicorn app:app --reload --host 127.0.0.1 --port 8000
+
+# Test API endpoints
+curl http://127.0.0.1:8000/api/config
+curl http://127.0.0.1:8000/api/teams
+curl http://127.0.0.1:8000/api/status
+
+# Access interactive API documentation
+# http://127.0.0.1:8000/docs
+
+# Test web interface
+# http://127.0.0.1:8000/
+```
+
+### CLI Testing
 
 ```bash
 # Test with previous season data
 python main.py --print-table
+
+# Test configuration commands
+python main.py --status
+python main.py --add-pick "SEA:1:6.0"
 ```
 
 ## Common Development Tasks

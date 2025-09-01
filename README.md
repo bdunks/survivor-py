@@ -1,6 +1,6 @@
-# Survivor Pool Optimizer
+# NFL Survivor Pool Optimizer
 
-A Python application that fetches NFL odds data and optimizes team selection for survivor pool fantasy football games using multiple algorithmic strategies.
+A comprehensive Python application with both **web interface** and **command-line interface** for optimizing NFL survivor pool picks using multiple algorithmic strategies.
 
 ## Overview
 
@@ -8,27 +8,38 @@ Survivor pools (also known as elimination pools) are fantasy football contests w
 
 ## Features
 
+### 🌐 **Web Interface** (Recommended)
+- **Modern Web UI**: Interactive dashboard with responsive design using Pico CSS
+- **Real-time Optimization**: Live updates as you adjust split weeks and user picks  
+- **User Pick Management**: Add/remove picks with dropdown selections
+- **Algorithm Comparison**: Side-by-side visualization of all three optimization strategies
+- **Color-coded Results**: Visual indicators for algorithm differences and week-to-week changes
+- **CSV Export**: Download optimized picks directly from the browser
+- **FastAPI Backend**: Type-safe REST API with automatic documentation
+
+### 📊 **Core Optimization Engine**
 - **Data Fetching**: Retrieves NFL odds and spread data from CBS Sports
-- **SQLite Database Storage**: Persistent storage of odds data with automatic table creation and data management
+- **SQLite Database Storage**: Persistent storage of odds data with automatic table creation
 - **Multiple Optimization Algorithms**:
   - **Best Spread**: Prioritizes teams with the highest point spreads (safest picks)
-  - **Back-to-Front**: Strategic timing-based approach that considers week positioning
+  - **Back-to-Front**: Strategic timing-based approach that considers week positioning  
   - **Weighted Future Value**: Advanced algorithm that considers a team's future value and availability
-- **Interactive Analysis Tools**:
-  - Table-based visualization with color-coded differences
-  - Algorithm comparison and pick analysis
-  - Split-week analysis for strategic planning
-  - CSV export functionality
-- **User-Defined Picks**: Support for manual pick overrides and existing selections
+- **User-Defined Picks**: Full support for manual pick overrides and existing selections
+
+### 🖥️ **Command Line Interface**
+- **Interactive Analysis Tools**: Table-based visualization with color-coded differences
+- **Algorithm Comparison**: Detailed pick analysis and performance metrics
+- **Split-week Analysis**: Strategic planning across different timeframes
+- **Export Functionality**: Multiple CSV format options
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.7 or higher
-- pip package manager
+- Python 3.8 or higher
+- UV package manager (recommended) or pip
 
-### Setup
+### Quick Start (Web Interface)
 
 1. Clone or download the repository:
 ```bash
@@ -36,19 +47,70 @@ git clone <repository-url>
 cd survivor-py
 ```
 
-2. Install required dependencies:
+2. Install dependencies:
 ```bash
-pip install requests termcolor beautifulsoup4
+# Using UV (recommended)
+uv add fastapi uvicorn[standard] pydantic python-multipart requests termcolor beautifulsoup4
+
+# Or using pip
+pip install -r requirements.txt
 ```
 
-3. Run the application:
+3. Start the web interface:
+```bash
+uvicorn app:app --reload --host 127.0.0.1 --port 8000
+```
+
+4. Open your browser to: **http://127.0.0.1:8000/**
+
+### Command Line Interface
+
+For CLI-only usage:
 ```bash
 python main.py --help
 ```
 
 ## Usage
 
-### Basic Commands
+### 🌐 Web Interface (Recommended)
+
+#### Getting Started
+1. Start the server: `uvicorn app:app --reload --host 127.0.0.1 --port 8000`
+2. Navigate to: **http://127.0.0.1:8000/**
+3. The interface loads automatically with current configuration
+
+#### Key Features
+
+**User Pick Management:**
+- Use dropdown menus for each week to select teams
+- Picks are automatically saved and incorporated into optimization
+- Clear picks by selecting "Select Team" option
+
+**Split Week Analysis:**
+- Adjust the slider to see how different split weeks affect optimization
+- Real-time updates show all three algorithms simultaneously
+- Color coding indicates:
+  - 🔴 **Red**: Algorithm disagreements (different team choices)
+  - 🟡 **Yellow**: Changes from previous split week
+  - ⚪ **Gray**: Consensus picks
+
+**Data Management:**
+- **Refresh Data**: Updates odds from CBS Sports for selected year
+- **Export CSV**: Downloads optimized picks for all algorithms
+- **Season Selection**: Choose different years (2023-2025)
+
+**Algorithm Comparison:**
+View all three strategies side-by-side:
+- **Best Spread**: Conservative, highest-spread picks
+- **Back-to-Front**: Strategic timing-based approach  
+- **Weighted Future Value**: Advanced algorithm considering future team value
+
+#### API Documentation
+Access interactive API docs at: **http://127.0.0.1:8000/docs**
+
+### 🖥️ Command Line Interface
+
+#### Basic Commands
 
 #### Refresh Data
 Fetch the latest odds data from CBS Sports:
@@ -151,21 +213,39 @@ python main.py --print-table
 
 ```
 survivor-py/
-├── main.py                 # Main application entry point and CLI
-├── models.py               # Data models (EventOdds, Pick)
-├── optimizer.py            # Pick optimization algorithms
-├── logger.py               # Custom CSV logging utility
+├── app.py                  # FastAPI web application and REST API
+├── api_models.py           # Pydantic models for API validation
+├── main.py                 # Command-line interface (original)
+├── models.py               # Core data models (EventOdds, Pick)
+├── optimizer.py            # Pick optimization algorithms  
 ├── requirements.txt        # Python dependencies
-├── odds_data.db           # SQLite database (created automatically)
-└── services/
-    ├── __init__.py        # Service module initialization
-    ├── cbssports.py       # CBS Sports data fetching service
-    └── sqlite.py          # Database service and operations
+├── config.json            # User configuration and picks (auto-created)
+├── odds_data.db           # SQLite database (auto-created)
+├── static/
+│   └── index.html         # Web interface frontend
+├── services/
+│   ├── __init__.py        # Service module initialization
+│   ├── cbssports.py       # CBS Sports data fetching service
+│   └── sqlite.py          # Database service and operations
+└── llm_context/
+    ├── front_end.html     # Original frontend template
+    └── implementation_plan.md  # Development documentation
 ```
 
 ### Key Components
 
-#### Models (`models.py`)
+#### Web Application (`app.py`)
+- **FastAPI Application**: Modern REST API with automatic OpenAPI documentation
+- **Static File Serving**: Hosts the web interface at root path
+- **API Endpoints**: Full CRUD operations for configuration and optimization
+- **Error Handling**: Structured error responses with proper HTTP status codes
+
+#### API Models (`api_models.py`)
+- **Pydantic Models**: Type-safe request/response validation
+- **ConfigResponse, PickRequest, OptimizationResponse**: Structured API data models
+- **Input Validation**: Automatic validation for team codes, weeks, and parameters
+
+#### Core Models (`models.py`)
 - **`EventOdds`**: Represents NFL game data with teams, spreads, and metadata
 - **`Pick`**: Represents a survivor pool pick with team, week, and spread information
 
@@ -177,6 +257,11 @@ survivor-py/
 - **`CBSSportsService`**: Data source for NFL odds and spreads
 - **`DatabaseService`**: SQLite database operations and data persistence
 
+#### Frontend (`static/index.html`)
+- **Responsive Design**: Modern UI using Pico CSS framework
+- **Real-time Updates**: JavaScript integration with FastAPI backend
+- **Interactive Features**: User pick management, split week analysis, CSV export
+
 ## Data Sources
 
 ### CBS Sports
@@ -186,8 +271,28 @@ survivor-py/
 
 ## Configuration
 
-### User-Defined Picks
-Modify the `user_defined_picks` list in `main.py` to include your existing picks:
+### Web Interface Configuration
+Configuration is managed through the web interface and automatically saved to `config.json`:
+
+**Via Web UI:**
+1. Open http://127.0.0.1:8000/
+2. Select teams from dropdown menus for each week
+3. Picks are automatically saved and applied to optimization
+4. Current week and all picks persist between sessions
+
+**Configuration File (`config.json`):**
+```json
+{
+  "current_week": 4,
+  "picks": [
+    {"team": "SEA", "week": 1, "spread": 6.0},
+    {"team": "HOU", "week": 2, "spread": 6.5}
+  ]
+}
+```
+
+### Command Line Configuration
+For CLI usage, modify the configuration in `main.py`:
 
 ```python
 user_defined_picks = [
@@ -196,13 +301,26 @@ user_defined_picks = [
     Pick(team="CLE", week=3, spread=6.5),
     # Add more picks as needed
 ]
+
+current_week = 4  # Update this each week
 ```
 
-### Current Week
-Update the `current_week` variable in `main.py` to reflect the current NFL week:
+### CLI Configuration Management
+```bash
+# Set current week
+python main.py --set-week 5
 
-```python
-current_week = 4  # Update this each week
+# Add a pick
+python main.py --add-pick "SEA:1:6.0"
+
+# Clear a specific week's pick
+python main.py --clear-pick 1
+
+# Clear all picks
+python main.py --clear-pick all
+
+# View current configuration
+python main.py --status
 ```
 
 ## Output Formats

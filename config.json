@@ -1,4 +1,15 @@
 {
   "current_week": 5,
-  "picks": []
+  "picks": [
+    {
+      "team": "ATL",
+      "week": 1,
+      "spread": 0.0
+    },
+    {
+      "team": "CAR",
+      "week": 2,
+      "spread": 0.0
+    }
+  ]
 }
