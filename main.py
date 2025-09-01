@@ -32,6 +32,10 @@ def parse_arguments():
         default=datetime.now().year,
         help="Year for which to fetch odds data",
     )
+    parser.add_argument("--set-week", type=int, help="Set current week (1-18)")
+    parser.add_argument("--add-pick", type=str, help="Add pick in format TEAM:WEEK:SPREAD")
+    parser.add_argument("--clear-pick", type=str, help="Clear pick for week number or 'all'")
+    parser.add_argument("--status", action="store_true", help="Show current configuration")
     return parser.parse_args()
 
 
@@ -45,9 +49,9 @@ def validate_picks(picks: List[Pick]) -> None:
             raise ValueError(f"Duplicate week found: {pick.week}. Each week can only be used once.")
         weeks_used.add(pick.week)
         
-        # Basic team name validation (3 character abbreviation)
-        if not isinstance(pick.team, str) or len(pick.team) != 3:
-            raise ValueError(f"Invalid team abbreviation: {pick.team}. Must be 3 characters.")
+        # Basic team name validation (2-3 character abbreviation)
+        if not isinstance(pick.team, str) or len(pick.team) < 2 or len(pick.team) > 3:
+            raise ValueError(f"Invalid team abbreviation: {pick.team}. Must be 2-3 characters.")
 
 
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -116,6 +120,182 @@ def load_config() -> Dict[str, Any]:
         'current_week': 1,
         'user_picks': []
     }
+
+
+def update_current_week(week: int) -> None:
+    """Update current week in config.json file."""
+    if not (1 <= week <= 18):
+        raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
+    
+    config_path = "config.json"
+    config = {}
+    
+    # Load existing config if it exists
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+    
+    # Update current week
+    config['current_week'] = week
+    
+    # Ensure picks array exists
+    if 'picks' not in config:
+        config['picks'] = []
+    
+    # Save updated config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        print(f"Updated current week to {week}")
+    except IOError as e:
+        print(f"Error updating config file: {e}")
+        raise
+
+
+def add_pick_to_config(pick_string: str) -> None:
+    """Add pick to config.json file from TEAM:WEEK:SPREAD format."""
+    try:
+        parts = pick_string.split(':')
+        if len(parts) != 3:
+            raise ValueError("Pick must be in format TEAM:WEEK:SPREAD")
+        
+        team, week_str, spread_str = parts
+        
+        # Validate and parse components
+        team = team.strip().upper()
+        if len(team) < 2 or len(team) > 3:
+            raise ValueError(f"Invalid team abbreviation: {team}. Must be 2-3 characters.")
+        
+        week = int(week_str.strip())
+        if not (1 <= week <= 18):
+            raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
+        
+        spread = float(spread_str.strip())
+        
+    except (ValueError, IndexError) as e:
+        print(f"Error parsing pick '{pick_string}': {e}")
+        print("Format should be: TEAM:WEEK:SPREAD (e.g., SEA:1:6.0)")
+        return
+    
+    config_path = "config.json"
+    config = {}
+    
+    # Load existing config if it exists
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+    
+    # Ensure required fields exist
+    if 'picks' not in config:
+        config['picks'] = []
+    if 'current_week' not in config:
+        config['current_week'] = 1
+    
+    # Check if week already has a pick and replace it
+    existing_pick_index = None
+    for i, pick in enumerate(config['picks']):
+        if pick.get('week') == week:
+            existing_pick_index = i
+            break
+    
+    new_pick = {
+        'team': team,
+        'week': week,
+        'spread': spread
+    }
+    
+    if existing_pick_index is not None:
+        old_pick = config['picks'][existing_pick_index]
+        config['picks'][existing_pick_index] = new_pick
+        print(f"Replaced existing pick for week {week}: {old_pick['team']} -> {team}")
+    else:
+        config['picks'].append(new_pick)
+        print(f"Added pick for week {week}: {team} ({spread:+.1f})")
+    
+    # Save updated config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        print(f"Error updating config file: {e}")
+        raise
+
+
+def clear_pick_from_config(week_or_all: str) -> None:
+    """Clear pick(s) from config.json file."""
+    config_path = "config.json"
+    config = {}
+    
+    # Load existing config if it exists
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+    
+    # Ensure picks array exists
+    if 'picks' not in config:
+        config['picks'] = []
+    
+    if week_or_all.lower() == 'all':
+        # Clear all picks
+        picks_count = len(config['picks'])
+        config['picks'] = []
+        print(f"Cleared all {picks_count} picks")
+    else:
+        # Clear specific week
+        try:
+            week = int(week_or_all)
+            if not (1 <= week <= 18):
+                raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
+        except ValueError as e:
+            print(f"Error: {e}")
+            print("Use a week number (1-18) or 'all'")
+            return
+        
+        # Find and remove the pick for the specified week
+        original_count = len(config['picks'])
+        config['picks'] = [pick for pick in config['picks'] if pick.get('week') != week]
+        
+        if len(config['picks']) < original_count:
+            print(f"Cleared pick for week {week}")
+        else:
+            print(f"No pick found for week {week}")
+    
+    # Save updated config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        print(f"Error updating config file: {e}")
+        raise
+
+
+def show_configuration_status() -> None:
+    """Display current configuration status."""
+    config = load_config()
+    
+    print("=== Configuration Status ===")
+    print(f"Current Week: {config['current_week']}")
+    print(f"Total Picks: {len(config['user_picks'])}")
+    
+    if config['user_picks']:
+        print("\nExisting Picks:")
+        # Sort picks by week for better display
+        sorted_picks = sorted(config['user_picks'], key=lambda p: p.week)
+        for pick in sorted_picks:
+            print(f"  Week {pick.week:2d}: {pick.team} ({pick.spread:+.1f})")
+    else:
+        print("\nNo picks configured")
+    
+    print()
 
 
 def print_to_console(all_picks):
@@ -359,6 +539,26 @@ def main():
     compare_requested = args.compare
     compare_picks_requested = args.compare_picks
     export_requested = args.export
+
+    # Handle configuration management commands first
+    if args.status:
+        show_configuration_status()
+        return
+    
+    if args.set_week is not None:
+        try:
+            update_current_week(args.set_week)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return
+    
+    if args.add_pick:
+        add_pick_to_config(args.add_pick)
+        return
+    
+    if args.clear_pick:
+        clear_pick_from_config(args.clear_pick)
+        return
 
     # Load configuration from config.json
     config = load_config()
