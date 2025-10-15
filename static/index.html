@@ -23,15 +23,36 @@
 
     main.container {
       max-width: 95%;
-      padding: 1rem;
+      padding: 0.5rem;
     }
 
     .controls-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
-      align-items: end;
-      margin-bottom: 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .controls-container > div {
+      display: flex;
+      flex-direction: column;
+      min-width: 120px;
+    }
+
+    .controls-container label {
+      font-size: 0.7rem;
+      margin-bottom: 0.2rem;
+      opacity: 0.8;
+    }
+
+    .controls-container select,
+    .controls-container input,
+    .controls-container button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.5rem;
+      min-height: auto;
     }
 
     .survivor-grid-container {
@@ -49,13 +70,13 @@
       border: 1px solid #4a5568;
       padding: 0;
       text-align: center;
-      height: 60px;
-      min-width: 90px;
+      height: 45px;
+      min-width: 80px;
     }
 
     .survivor-grid th {
       background-color: #2d3748;
-      font-size: 0.9em;
+      font-size: 0.8em;
     }
 
     .survivor-grid th:first-child {
@@ -85,7 +106,7 @@
       align-items: center;
       cursor: pointer;
       transition: background-color 0.2s;
-      font-size: 0.85em;
+      font-size: 0.75em;
     }
 
     .grid-cell:hover {
@@ -124,7 +145,7 @@
     }
 
     .spread {
-      font-size: 0.9em;
+      font-size: 0.8em;
       color: #a0aec0;
     }
 
@@ -144,16 +165,48 @@
     /* Export button positioning */
     .export-controls {
       text-align: right;
-      margin-bottom: 1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .export-controls button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+    }
+
+    /* Sortable column headers */
+    .sortable {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+    }
+
+    .sortable:hover {
+      background-color: #4a5568;
+    }
+
+    .sortable::after {
+      content: ' ↕';
+      opacity: 0.5;
+      font-size: 0.8em;
+    }
+
+    .sortable.sort-asc::after {
+      content: ' ↑';
+      opacity: 1;
+    }
+
+    .sortable.sort-desc::after {
+      content: ' ↓';
+      opacity: 1;
     }
   </style>
 </head>
 
 <body>
   <main class="container">
-    <header>
-      <h1>NFL Survivor Pool Optimizer</h1>
-      <p>Click a cell to lock in a pick. The optimizer will suggest the best path forward based on your choices.</p>
+    <header style="margin-bottom: 0.5rem;">
+      <h1 style="margin: 0; font-size: 1.4rem; display: inline;">NFL Survivor Pool Optimizer</h1>
+      <span style="margin-left: 1rem; font-size: 0.8rem; opacity: 0.7;">Click cells to lock picks</span>
     </header>
 
     <article class="controls-container">
@@ -164,6 +217,10 @@
           <option value="2024">2024</option>
           <option value="2023">2023</option>
         </select>
+      </div>
+      <div>
+        <label for="currentWeekInput">Current Week</label>
+        <input type="number" min="1" max="18" value="4" id="currentWeekInput">
       </div>
       <div>
         <label for="algorithmSelect">Algorithm</label>
@@ -207,14 +264,16 @@
       const resetBtn = document.getElementById('resetBtn');
       const yearSelect = document.getElementById('yearSelect');
       const exportCsvBtn = document.getElementById('exportCsvBtn');
+      const currentWeekInput = document.getElementById('currentWeekInput');
 
       // --- CONSTANTS & STATE ---
-      const NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS"];
+      const NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAC", "KC", "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS"];
       const WEEKS = 18;
 
       let scheduleData = {}; // To hold the full season schedule
       let userPicks = {}; // { week: team, ... }
       let currentConfig = null;
+      let sortState = { column: null, direction: null }; // Track current sort state
 
       // --- API FUNCTIONS ---
       async function fetchConfig() {
@@ -250,12 +309,12 @@
               spread: null
             })
           });
-          
+
           if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to update pick');
           }
-          
+
           showSuccess(`Added pick: ${team} for week ${week}`);
           return await response.json();
         } catch (error) {
@@ -269,12 +328,12 @@
           const response = await fetch(`/api/config/picks/${week}`, {
             method: 'DELETE'
           });
-          
+
           if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to clear pick');
           }
-          
+
           showSuccess(`Cleared pick for week ${week}`);
           return await response.json();
         } catch (error) {
@@ -288,24 +347,24 @@
         try {
           refreshDataBtn.setAttribute('aria-busy', 'true');
           refreshDataBtn.textContent = 'Refreshing...';
-          
+
           const response = await fetch(`/api/data/refresh?year=${year}`, {
             method: 'POST'
           });
-          
+
           if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to refresh data');
           }
-          
+
           const result = await response.json();
           showSuccess(`Refreshed ${result.events_count} events for ${result.year}`);
-          
+
           // Refresh schedule data and grid after data update
           await loadScheduleData();
           renderGrid();
           await runOptimization();
-          
+
         } catch (error) {
           showError(`Failed to refresh data: ${error.message}`);
         } finally {
@@ -333,18 +392,18 @@
         const splitWeek = parseInt(splitWeekSlider.value);
         const year = parseInt(yearSelect.value);
         const algorithm = algorithmSelect.value;
-        
+
         try {
           exportCsvBtn.setAttribute('aria-busy', 'true');
           exportCsvBtn.textContent = 'Exporting...';
-          
+
           const response = await fetch(`/api/export/csv?split_week=${splitWeek}&algorithm=${algorithm}&year=${year}`);
-          
+
           if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to export CSV');
           }
-          
+
           // Create download
           const blob = await response.blob();
           const url = window.URL.createObjectURL(blob);
@@ -356,14 +415,69 @@
           a.click();
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
-          
+
           showSuccess('CSV file downloaded successfully');
-          
+
         } catch (error) {
           showError(`Failed to export CSV: ${error.message}`);
         } finally {
           exportCsvBtn.setAttribute('aria-busy', 'false');
           exportCsvBtn.textContent = 'Export to CSV';
+        }
+      }
+
+      async function updateCurrentWeek(week) {
+        try {
+          const response = await fetch(`/api/config/week/${week}`, {
+            method: 'PUT'
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update current week');
+          }
+
+          showSuccess(`Updated current week to ${week}`);
+          return await response.json();
+        } catch (error) {
+          showError(`Failed to update current week: ${error.message}`);
+          return null;
+        }
+      }
+
+      async function updateAlgorithm(algorithm) {
+        try {
+          const response = await fetch(`/api/config/algorithm?algorithm=${encodeURIComponent(algorithm)}`, {
+            method: 'PUT'
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update algorithm');
+          }
+
+          return await response.json();
+        } catch (error) {
+          showError(`Failed to update algorithm: ${error.message}`);
+          return null;
+        }
+      }
+
+      async function updateSplitWeek(splitWeek) {
+        try {
+          const response = await fetch(`/api/config/split-week?split_week=${splitWeek}`, {
+            method: 'PUT'
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update split week');
+          }
+
+          return await response.json();
+        } catch (error) {
+          showError(`Failed to update split week: ${error.message}`);
+          return null;
         }
       }
 
@@ -377,11 +491,77 @@
         console.log(message);
       }
 
+      // --- SORTING FUNCTIONS ---
+      function sortTeams(teams, column, direction) {
+        return [...teams].sort((a, b) => {
+          let aValue, bValue;
+
+          if (column === 'team') {
+            aValue = a;
+            bValue = b;
+          } else {
+            // Column is a week number, sort by spread
+            const weekNum = parseInt(column);
+            const aGame = scheduleData[a]?.[weekNum];
+            const bGame = scheduleData[b]?.[weekNum];
+
+            // Handle BYE weeks (no game data)
+            if (!aGame && !bGame) return 0;
+            if (!aGame) return direction === 'asc' ? 1 : -1; // BYE weeks go to end
+            if (!bGame) return direction === 'asc' ? -1 : 1;
+
+            aValue = aGame.spread;
+            bValue = bGame.spread;
+          }
+
+          if (direction === 'asc') {
+            return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+          } else {
+            return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+          }
+        });
+      }
+
+      function handleColumnSort(column) {
+        // Toggle sort direction
+        if (sortState.column === column) {
+          if (sortState.direction === 'asc') {
+            sortState.direction = 'desc';
+          } else if (sortState.direction === 'desc') {
+            // Reset to no sort
+            sortState.column = null;
+            sortState.direction = null;
+          } else {
+            sortState.direction = 'asc';
+          }
+        } else {
+          sortState.column = column;
+          sortState.direction = 'asc';
+        }
+
+        renderGrid();
+      }
+
+      function updateSortHeaders() {
+        // Remove all sort classes
+        document.querySelectorAll('.sortable').forEach(header => {
+          header.classList.remove('sort-asc', 'sort-desc');
+        });
+
+        // Add current sort class
+        if (sortState.column && sortState.direction) {
+          const activeHeader = document.querySelector(`.sortable[data-column="${sortState.column}"]`);
+          if (activeHeader) {
+            activeHeader.classList.add(`sort-${sortState.direction}`);
+          }
+        }
+      }
+
       // --- DATA PROCESSING ---
       async function loadScheduleData() {
         const year = parseInt(yearSelect.value);
         const events = await fetchEvents(year);
-        
+
         // Convert events to schedule data format
         scheduleData = {};
         NFL_TEAMS.forEach(team => {
@@ -418,14 +598,22 @@
       // --- GRID RENDERING ---
       function renderGrid() {
         // Header
-        let headerHtml = '<tr><th>Team</th>';
-        for (let i = 1; i <= WEEKS; i++) headerHtml += `<th>Week ${i}</th>`;
+        let headerHtml = '<tr><th class="sortable" data-column="team">Team</th>';
+        for (let i = 1; i <= WEEKS; i++) {
+          headerHtml += `<th class="sortable" data-column="${i}">Week ${i}</th>`;
+        }
         headerHtml += '</tr>';
         survivorGridHead.innerHTML = headerHtml;
 
+        // Determine team order
+        let teamsToRender = NFL_TEAMS;
+        if (sortState.column && sortState.direction) {
+          teamsToRender = sortTeams(NFL_TEAMS, sortState.column, sortState.direction);
+        }
+
         // Body
         let bodyHtml = '';
-        NFL_TEAMS.forEach(team => {
+        teamsToRender.forEach(team => {
           bodyHtml += `<tr><td>${team}</td>`;
           for (let week = 1; week <= WEEKS; week++) {
             const game = scheduleData[team]?.[week];
@@ -445,6 +633,10 @@
           bodyHtml += '</tr>';
         });
         survivorGridBody.innerHTML = bodyHtml;
+
+        // Add header click listeners and update sort indicators
+        addHeaderEventListeners();
+        updateSortHeaders();
         addGridEventListeners();
         updateGridState();
       }
@@ -487,7 +679,7 @@
       async function runOptimization() {
         const splitWeek = parseInt(splitWeekSlider.value);
         const algorithm = algorithmSelect.value;
-        
+
         try {
           // Clear previous suggestions
           document.querySelectorAll('.suggested-pick').forEach(cell => {
@@ -530,7 +722,7 @@
           // Picking
           await updatePick(team, week);
         }
-        
+
         // Refresh config and grid state
         currentConfig = await fetchConfig();
         updateGridState();
@@ -542,13 +734,37 @@
         });
       }
 
+      function addHeaderEventListeners() {
+        document.querySelectorAll('.sortable').forEach(header => {
+          header.addEventListener('click', (e) => {
+            const column = e.target.dataset.column;
+            handleColumnSort(column);
+          });
+        });
+      }
+
       // Control event listeners
       splitWeekSlider.addEventListener('input', (e) => {
         splitWeekValue.textContent = e.target.value;
       });
 
-      splitWeekSlider.addEventListener('change', runOptimization);
-      algorithmSelect.addEventListener('change', runOptimization);
+      splitWeekSlider.addEventListener('change', async (e) => {
+        await updateSplitWeek(parseInt(e.target.value));
+        runOptimization();
+      });
+
+      algorithmSelect.addEventListener('change', async (e) => {
+        await updateAlgorithm(e.target.value);
+        runOptimization();
+      });
+
+      currentWeekInput.addEventListener('change', async (e) => {
+        const week = parseInt(e.target.value);
+        if (week >= 1 && week <= 18) {
+          await updateCurrentWeek(week);
+        }
+      });
+
       yearSelect.addEventListener('change', async () => {
         await loadScheduleData();
         renderGrid();
@@ -574,13 +790,21 @@
         try {
           // Load current configuration
           currentConfig = await fetchConfig();
-          
+
+          // Update UI controls with config values
+          if (currentConfig) {
+            currentWeekInput.value = currentConfig.current_week;
+            algorithmSelect.value = currentConfig.algorithm;
+            splitWeekSlider.value = currentConfig.split_week;
+            splitWeekValue.textContent = currentConfig.split_week;
+          }
+
           // Load schedule data
           await loadScheduleData();
-          
+
           // Render grid
           renderGrid();
-          
+
         } catch (error) {
           showError(`Failed to initialize application: ${error.message}`);
         }

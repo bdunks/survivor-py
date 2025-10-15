@@ -19,6 +19,8 @@ class ConfigResponse(BaseModel):
     current_week: int = Field(..., ge=1, le=18)
     user_picks: List[PickResponse]
     total_picks: int
+    algorithm: str = Field(default="best-spread", description="Selected optimization algorithm")
+    split_week: int = Field(default=10, ge=1, le=18, description="Selected split week")
 
 
 class EventOddsResponse(BaseModel):

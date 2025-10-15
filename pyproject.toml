@@ -13,3 +13,11 @@ dependencies = [
     "termcolor>=3.1.0",
     "uvicorn[standard]>=0.35.0",
 ]
+
+[tool.poe.tasks]
+dev = "uvicorn app:app --reload --host 127.0.0.1 --port 8000"
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.37.0",
+]

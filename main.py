@@ -60,18 +60,30 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(config.get('current_week'), int):
         print("Warning: current_week should be an integer, defaulting to 1")
         config['current_week'] = 1
-    
+
     if not (1 <= config['current_week'] <= 18):
         print(f"Warning: current_week {config['current_week']} invalid, defaulting to 1")
         config['current_week'] = 1
-    
+
     # Ensure picks is a list
     if 'picks' not in config:
         config['picks'] = []
     elif not isinstance(config['picks'], list):
         print("Warning: picks should be a list, defaulting to empty list")
         config['picks'] = []
-    
+
+    # Validate algorithm
+    valid_algorithms = ["best-spread", "weighted-future-value", "back-to-front"]
+    if not isinstance(config.get('algorithm'), str) or config.get('algorithm') not in valid_algorithms:
+        config['algorithm'] = "best-spread"
+
+    # Validate split_week
+    if not isinstance(config.get('split_week'), int):
+        config['split_week'] = 10
+
+    if not (1 <= config['split_week'] <= 18):
+        config['split_week'] = 10
+
     return config
 
 
@@ -108,7 +120,9 @@ def load_config() -> Dict[str, Any]:
             
             return {
                 'current_week': config['current_week'],
-                'user_picks': picks
+                'user_picks': picks,
+                'algorithm': config['algorithm'],
+                'split_week': config['split_week']
             }
         
         except (json.JSONDecodeError, FileNotFoundError) as e:
@@ -118,7 +132,9 @@ def load_config() -> Dict[str, Any]:
     # Return default configuration
     return {
         'current_week': 1,
-        'user_picks': []
+        'user_picks': [],
+        'algorithm': 'best-spread',
+        'split_week': 10
     }
 
 
@@ -150,6 +166,79 @@ def update_current_week(week: int) -> None:
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
         print(f"Updated current week to {week}")
+    except IOError as e:
+        print(f"Error updating config file: {e}")
+        raise
+
+
+def update_algorithm(algorithm: str) -> None:
+    """Update algorithm setting in config.json file."""
+    valid_algorithms = ["best-spread", "weighted-future-value", "back-to-front"]
+    if algorithm not in valid_algorithms:
+        raise ValueError(f"Invalid algorithm: {algorithm}. Must be one of: {', '.join(valid_algorithms)}")
+
+    config_path = "config.json"
+    config = {}
+
+    # Load existing config if it exists
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    # Update algorithm
+    config['algorithm'] = algorithm
+
+    # Ensure required fields exist
+    if 'current_week' not in config:
+        config['current_week'] = 1
+    if 'picks' not in config:
+        config['picks'] = []
+    if 'split_week' not in config:
+        config['split_week'] = 10
+
+    # Save updated config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        print(f"Error updating config file: {e}")
+        raise
+
+
+def update_split_week(split_week: int) -> None:
+    """Update split week setting in config.json file."""
+    if not (1 <= split_week <= 18):
+        raise ValueError(f"Invalid split week: {split_week}. Week must be between 1 and 18.")
+
+    config_path = "config.json"
+    config = {}
+
+    # Load existing config if it exists
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    # Update split week
+    config['split_week'] = split_week
+
+    # Ensure required fields exist
+    if 'current_week' not in config:
+        config['current_week'] = 1
+    if 'picks' not in config:
+        config['picks'] = []
+    if 'algorithm' not in config:
+        config['algorithm'] = 'best-spread'
+
+    # Save updated config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
     except IOError as e:
         print(f"Error updating config file: {e}")
         raise
