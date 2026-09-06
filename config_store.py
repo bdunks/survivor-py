@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from models import Pick
+from optimizer import ALGORITHM_DISPATCH
 
 CONFIG_PATH = Path("config.json")
 DEFAULT_CONFIG = {
@@ -13,7 +14,6 @@ DEFAULT_CONFIG = {
     "algorithm": "best-spread",
     "split_week": 10,
 }
-VALID_ALGORITHMS = ("best-spread", "back-to-front", "weighted-future-value")
 
 
 def _default_config() -> dict[str, Any]:
@@ -31,8 +31,8 @@ def _validate_week(value: object, label: str) -> int:
 
 
 def _validate_algorithm(algorithm: object) -> str:
-    if not isinstance(algorithm, str) or algorithm not in VALID_ALGORITHMS:
-        options = ", ".join(VALID_ALGORITHMS)
+    if not isinstance(algorithm, str) or algorithm not in ALGORITHM_DISPATCH:
+        options = ", ".join(ALGORITHM_DISPATCH)
         raise ValueError(f"Invalid algorithm: {algorithm}. Must be one of: {options}")
     return algorithm
 

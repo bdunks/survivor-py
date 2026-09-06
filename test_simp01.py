@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import tempfile
@@ -34,11 +33,7 @@ EXPECTED_API_ROUTES = {
     ("DELETE", "/api/config/picks"),
     ("POST", "/api/data/refresh"),
     ("GET", "/api/data/events"),
-    ("GET", "/api/teams"),
-    ("GET", "/api/optimize/{split_week}"),
     ("GET", "/api/optimize/{split_week}/{algorithm}"),
-    ("GET", "/api/export/csv"),
-    ("GET", "/api/status"),
 }
 
 
@@ -174,9 +169,7 @@ class OptimizerCharacterizationTests(unittest.TestCase):
                         return_value=events,
                     ),
                 ):
-                    result = asyncio.run(
-                        application.optimize_single_algorithm(14, slug, year=2025)
-                    )
+                    result = application.optimize_single_algorithm(14, slug, year=2025)
 
                 self.assertEqual(result.algorithm, expected_names[slug])
 

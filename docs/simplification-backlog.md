@@ -615,7 +615,7 @@ Browser smoke via Chromium/CDP passed initial config/grid load, year reload, cur
 
 ## SIMP-07 — Prune and simplify the FastAPI application
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-06
@@ -691,7 +691,13 @@ Keep:
 
 ### Handoff
 
-_Blocked by SIMP-06._
+Implemented SIMP-07 without finding an external consumer for the removed routes. Parent preflight found no separate repository client, tracked deployment/automation candidates, or frontend references to `/api/status`, `/api/teams`, the all-algorithm route, or CSV export; documentation-only mentions were left for SIMP-08.
+
+Removed the status, teams, all-algorithm optimization, and CSV routes and response models; deleted CSV/tempfile handling, wildcard CORS, the global exception handler, broad route wrappers, the executable Uvicorn block, and the unused `logger.py`. Retained exactly the config, pick, refresh, events, single-algorithm, and static routes. Blocking handlers are plain `def`, algorithm validation/callable/display lookup uses `ALGORITHM_DISPATCH`, and Pydantic response models validate domain objects from attributes.
+
+Updated the route inventory test for the retained API. Focused dependency-free ASGI/OpenAPI smoke passed: all retained routes returned 200, all three algorithm slugs returned their stable display names, removed routes returned 404, invalid week/team/algorithm/projected-end inputs returned 4xx, static `/` returned 200, and the frontend retained only the expected API paths.
+
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test` (16 tests), and `python -m compileall -q .` all passed. The full code graph was refreshed with 325 nodes and 758 edges, with no skipped or parse-partial files; changed-path coverage had no recorded issues.
 
 ---
 

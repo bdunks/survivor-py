@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PickRequest(BaseModel):
@@ -10,6 +10,8 @@ class PickRequest(BaseModel):
 
 
 class PickResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     team: str
     week: int
     spread: float | None = None
@@ -26,6 +28,8 @@ class ConfigResponse(BaseModel):
 
 
 class EventOddsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     event_id: int
     season_year: int
     week: int
@@ -40,38 +44,3 @@ class OptimizationResult(BaseModel):
     algorithm: str
     picks: list[PickResponse]
     total_spread: float
-
-
-class OptimizationResponse(BaseModel):
-    split_week: int
-    algorithms: dict[str, OptimizationResult]
-
-
-class RefreshRequest(BaseModel):
-    year: int = Field(..., ge=2020, le=2030, description="NFL season year")
-
-
-class ErrorResponse(BaseModel):
-    error: str
-    detail: str | None = None
-    status_code: int
-
-
-class StatusResponse(BaseModel):
-    current_week: int
-    total_picks: int
-    database_events: int
-    last_refresh: str | None = None
-
-
-class TeamListResponse(BaseModel):
-    teams: list[str]
-
-
-class WeekUpdateRequest(BaseModel):
-    week: int = Field(..., ge=1, le=18, description="New current week")
-
-
-class ExportResponse(BaseModel):
-    filename: str
-    download_url: str

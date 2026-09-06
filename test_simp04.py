@@ -1,4 +1,3 @@
-import asyncio
 import sqlite3
 import tempfile
 import unittest
@@ -169,7 +168,7 @@ class AppDataFlowTests(unittest.TestCase):
             patch.object(application, "fetch_events", return_value=[event]) as fetch,
             patch.object(application, "save_odds_data") as save,
         ):
-            refresh_result = asyncio.run(application.refresh_data(2025))
+            refresh_result = application.refresh_data(2025)
 
         fetch.assert_called_once_with(2025, starting_week=4)
         save.assert_called_once_with([event])
@@ -178,7 +177,7 @@ class AppDataFlowTests(unittest.TestCase):
         with patch.object(
             application, "fetch_odds_data", return_value=[event]
         ) as fetch:
-            responses = asyncio.run(application.get_events(2025))
+            responses = application.get_events(2025)
 
         fetch.assert_called_once_with(2025)
         self.assertEqual(responses[0].event_id, 1)
