@@ -703,7 +703,7 @@ Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-
 
 ## SIMP-08 — Rewrite retained documentation and finalize dependencies
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-07
@@ -751,7 +751,15 @@ Make the README and developer guidance describe only the resulting product and c
 
 ### Handoff
 
-_Blocked by SIMP-07._
+Rewrote `README.md` as the product and web-app guide: Mise/UV installation, the weekly workflow, all three algorithms, Projected Pool End Week semantics, the 18-week grid, local data files, CBS limitations, development checks, and the FastAPI `/docs` link. It explicitly describes manual algorithm comparison with one selected recommendation at a time.
+
+Updated `CLAUDE.md` with the final commands, same-origin FastAPI/static architecture, retained route inventory, configuration behavior, scraper limitations, and dependency roles. `config.example.json` already matches the canonical SIMP-03 keys, so it was unchanged.
+
+The dependency audit found runtime evidence for every declared dependency: BeautifulSoup4 parses CBS HTML, FastAPI serves the application, Pydantic validates API models, Requests fetches CBS pages, and Uvicorn runs the Mise development server. The five direct dependencies in `pyproject.toml` match the project's direct entries in `uv.lock`; no dependency changed, so the lockfile was not regenerated.
+
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test` (16 tests), and `python -m compileall -q .` all pass. Focused documentation, route, dependency, lockfile, and canonical-config scans pass. No hand-written API reference was recreated, and `CHANGELOG.md` was left unchanged.
+
+The stale-reference scan finds no CLI, CSV, removed-route, Poe, or `requirements.txt` operational references outside the intentionally historical `CHANGELOG.md` and pre-SIMP backlog narrative. SIMP-09 and all other backlog items remain untouched.
 
 ---
 
