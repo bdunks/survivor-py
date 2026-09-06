@@ -145,13 +145,6 @@ class OptimizerCharacterizationTests(unittest.TestCase):
             "weighted-future-value": "Weighted Future Value",
         }
 
-        class FixtureDatabase:
-            def fetch_odds_data(self, year):
-                return events
-
-            def close(self):
-                pass
-
         for slug in ALGORITHM_METHODS:
             with self.subTest(algorithm=slug):
                 with (
@@ -162,8 +155,8 @@ class OptimizerCharacterizationTests(unittest.TestCase):
                     ),
                     patch.object(
                         application,
-                        "DatabaseService",
-                        return_value=FixtureDatabase(),
+                        "fetch_odds_data",
+                        return_value=events,
                     ),
                 ):
                     result = asyncio.run(
@@ -307,7 +300,6 @@ class EventOddsCharacterizationTests(unittest.TestCase):
                 self.assertEqual(event.away_team, away_team)
                 self.assertEqual(event.home_team, home_team)
 
-    @unittest.expectedFailure
     def test_malformed_game_name_is_rejected_before_an_unk_pick_can_be_selected(self):
         with self.assertRaises(ValueError):
             EventOdds(1, 2025, 1, "not a matchup", 3.0)

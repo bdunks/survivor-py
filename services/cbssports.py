@@ -1,132 +1,108 @@
+import math
+
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from models import EventOdds
 
 
-class Error:
-    type: str
+def fetch_soup(url: str) -> BeautifulSoup:
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return BeautifulSoup(response.content, "html.parser")
 
 
-class CBSSportsService:
-    def __init__(self):
-        self.http_service = requests
+def parse_events(
+    html: str | bytes | BeautifulSoup, season_year: int, week_number: int
+) -> list[EventOdds]:
+    soup = (
+        BeautifulSoup(html, "html.parser") if isinstance(html, (str, bytes)) else html
+    )
+    events = []
 
-    def check(self, event_id, short_name, spread):
-        if event_id is None:
-            return Error("event_id")
-        if short_name is None:
-            return Error("short_name")
-        if spread is None:
-            return Error("spread")
-
-    def fetch_soup(self, url):
+    for card in soup.find_all("div", class_="single-score-card"):
+        if not isinstance(card, Tag):
+            continue
+        identifier = card.get("id")
+        if not isinstance(identifier, str) or not identifier:
+            continue
         try:
-            response = requests.get(url, timeout=30)  # Add timeout
-            response.raise_for_status()  # Raise an exception for HTTP errors
-            return BeautifulSoup(response.content, "html.parser")
-        except requests.RequestException as e:
-            print(f"Error fetching data from {url}: {e}")
-            raise  # Re-raise to be handled by caller
+            event_id = int(identifier.rsplit("-", 1)[-1])
+        except ValueError:
+            continue
 
-    def fetch_events(self, season_year, starting_week=1):
-        results = []
-        error_count = 0  # Track the number of errors
+        data_abbrev = card.get("data-abbrev")
+        if not isinstance(data_abbrev, str) or not data_abbrev:
+            continue
+        short_name = data_abbrev.rsplit("_", 1)[-1].strip()
+        if not short_name:
+            continue
 
-        weeks = range(starting_week, 19)
-        for week_number in weeks:
-            print(f"Processing Week {week_number}")
-
-            week_url = f"https://www.cbssports.com/nfl/scoreboard/{season_year}/regular/{week_number}/"
+        odds_home = card.find("td", class_="in-progress-odds-home")
+        if odds_home is None:
+            continue
+        odds_home_text = odds_home.get_text(strip=True)
+        if odds_home_text.upper() == "PK":
+            spread = 0.0
+        else:
             try:
-                soup = self.fetch_soup(week_url)
-            except requests.RequestException as e:
-                print(f"Failed to fetch data for week {week_number}: {e}")
-                print("Skipping this week and continuing...")
-                error_count += 1
+                spread = float(odds_home_text)
+            except ValueError:
+                continue
+            if not math.isfinite(spread):
                 continue
 
-            # Find all elements with class "single-score-card"
-            score_cards = soup.find_all("div", class_="single-score-card")
-
-            # Iterate through each score card and extract required data
-            event_odds = []
-            for card in score_cards:
-                # Get the id attribute
-                event_id = card.get("id")
-                if event_id:
-                    event_id = event_id.split("-")[-1]
-
-                # Get the data-abbrev attribute
-                data_abbrev = card.get("data-abbrev")
-                short_name = None
-
-                if data_abbrev:
-                    short_name = data_abbrev.split("_")[-1]
-
-                # Initialize spread with default value
-                spread = None
-
-                # Find the in-progress-odds-home element within the card
-                odds_home = card.find("td", class_="in-progress-odds-home")
-
-                # Get the text inside the in-progress-odds-home element if it exists and convert to integer spread
-                if odds_home:
-                    odds_home_text = odds_home.get_text(strip=True)
-                    try:
-                        spread = (
-                            0.0 if odds_home_text == "PK" else float(odds_home_text)
-                        )
-                    except ValueError:
-                        # If parsing fails, use default
-                        spread = 0.0
-                        print(
-                            f"Warning - Week {week_number} - Could not parse spread '{odds_home_text}', using default 0.0"
-                        )
-
-                # If spread is still None (no odds_home element found), use default
-                if spread is None:
-                    spread = 0.0
-                    print(
-                        f"Warning - Week {week_number} - No spread found for {short_name or 'unknown game'}, using default 0.0"
-                    )
-
-                # Only skip if critical data is missing
-                error = self.check(event_id, short_name, spread)
-                if error:
-                    print(
-                        f"Error - Week {week_number} - Missing critical data - {error.type}{' -- short_name: ' + short_name if short_name else ''}"
-                    )
-                    error_count += 1
-                    continue
-
-                event_odds.append(
-                    EventOdds(
-                        event_id=event_id,
-                        season_year=season_year,  # This is the same for all events in a season
-                        week=week_number,
-                        short_name=short_name,
-                        spread=spread,
-                    )
+        try:
+            events.append(
+                EventOdds(
+                    event_id=event_id,
+                    season_year=season_year,
+                    week=week_number,
+                    short_name=short_name,
+                    spread=spread,
                 )
+            )
+        except (TypeError, ValueError):
+            continue
 
-            print(
-                f"Week {week_number} processing complete. {len(event_odds)} events processed.\n"
-            )  # Progress reporting per week
+    return events
 
-            results.extend(event_odds)
 
+def fetch_events(season_year: int, starting_week: int = 1) -> list[EventOdds]:
+    results = []
+    error_count = 0
+
+    for week_number in range(starting_week, 19):
+        print(f"Processing Week {week_number}")
+        week_url = (
+            f"https://www.cbssports.com/nfl/scoreboard/"
+            f"{season_year}/regular/{week_number}/"
+        )
+        try:
+            soup = fetch_soup(week_url)
+        except requests.RequestException as error:
+            print(f"Failed to fetch data for week {week_number}: {error}")
+            print("Skipping this week and continuing...")
+            error_count += 1
+            continue
+
+        event_odds = parse_events(soup, season_year, week_number)
         print(
-            f"Processing complete. Total events processed: {len(results)}, Total errors: {error_count}"
+            f"Week {week_number} processing complete. "
+            f"{len(event_odds)} events processed.\n"
+        )
+        results.extend(event_odds)
+
+    print(
+        f"Processing complete. Total events processed: {len(results)}, "
+        f"Total errors: {error_count}"
+    )
+    if not results and error_count > 0:
+        print(
+            "Warning: No data was retrieved. Please check your internet connection and try again."
+        )
+        print(
+            "If the problem persists, CBS Sports may have changed their website format."
         )
 
-        # Provide helpful message if no data was retrieved
-        if len(results) == 0 and error_count > 0:
-            print(
-                "Warning: No data was retrieved. Please check your internet connection and try again."
-            )
-            print(
-                "If the problem persists, CBS Sports may have changed their website format."
-            )
-
-        return results
+    return results

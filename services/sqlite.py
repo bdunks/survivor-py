@@ -1,22 +1,26 @@
 import sqlite3
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
 from models import EventOdds
 
+DEFAULT_DB_NAME = "odds_data.db"
 
-class DatabaseService:
-    def __init__(self, db_name="odds_data.db"):
-        try:
-            self.conn = sqlite3.connect(db_name)
-            self.cursor = self.conn.cursor()
-            self.setup_database()
-        except sqlite3.Error as e:
-            print(f"Error connecting to database {db_name}: {e}")
-            raise
 
-    def setup_database(self):
-        """Create the necessary tables if they don't exist."""
-        self.cursor.execute(
-            """
+@contextmanager
+def _connection(db_name: str | Path = DEFAULT_DB_NAME) -> Iterator[sqlite3.Connection]:
+    connection = sqlite3.connect(db_name)
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
+def _setup_database(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS averaged_odds (
             event_id INTEGER PRIMARY KEY,
             season_year INTEGER,
@@ -24,84 +28,70 @@ class DatabaseService:
             home_team TEXT,
             away_team TEXT,
             short_name TEXT,
-            spread REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP                            
+            spread REAL
         )
         """
-        )
+    )
+    connection.execute("DROP TRIGGER IF EXISTS update_averaged_odds")
 
-        # Create a trigger to update the updated_at column whenever a row is updated
-        self.cursor.execute(
+
+def setup_database(db_name: str | Path = DEFAULT_DB_NAME) -> None:
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+
+
+def save_odds_data(
+    data: Iterable[EventOdds], db_name: str | Path = DEFAULT_DB_NAME
+) -> None:
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        connection.executemany(
             """
-        CREATE TRIGGER IF NOT EXISTS update_averaged_odds
-        AFTER UPDATE ON averaged_odds
-        FOR EACH ROW
-        BEGIN
-            UPDATE averaged_odds SET updated_at = CURRENT_TIMESTAMP WHERE event_id = OLD.event_id;
-        END
-        """
+            INSERT OR REPLACE INTO averaged_odds
+                (event_id, season_year, week, home_team, away_team, short_name, spread)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                (
+                    item.event_id,
+                    item.season_year,
+                    item.week,
+                    item.home_team,
+                    item.away_team,
+                    item.short_name,
+                    item.spread,
+                )
+                for item in data
+            ),
         )
 
-        self.conn.commit()
 
-    def insert_or_replace_data(
-        self, table_name: str, columns: list[str], data: list[tuple]
-    ):
-        """Insert or replace data into a given table."""
-        placeholders = ", ".join(["?"] * len(columns))
-        columns_str = ", ".join(columns)
-        sql = f"INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})"
-        self.cursor.executemany(sql, data)
-        self.conn.commit()
+def fetch_odds_data(
+    year: int, db_name: str | Path = DEFAULT_DB_NAME
+) -> list[EventOdds]:
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        rows = connection.execute(
+            """
+            SELECT event_id, season_year, week, short_name, spread
+            FROM averaged_odds
+            WHERE season_year = ?
+            """,
+            (year,),
+        ).fetchall()
 
-    def save_odds_data(self, data):
-        """Insert the averaged odds data into the database."""
-        columns = [
-            "event_id",
-            "season_year",
-            "week",
-            "home_team",
-            "away_team",
-            "short_name",
-            "spread",
-        ]
-        formatted_data = [
-            (
-                item.event_id,
-                item.season_year,
-                item.week,
-                item.home_team,
-                item.away_team,
-                item.short_name,
-                item.spread,
-            )
-            for item in data
-        ]
-        self.insert_or_replace_data("averaged_odds", columns, formatted_data)
-
-    def fetch_odds_data(self, year: int) -> list[EventOdds]:
-        """Fetch the averaged odds data from the database for a specific year."""
+    events = []
+    for event_id, season_year, week, short_name, spread in rows:
         try:
-            self.cursor.execute(
-                "SELECT * FROM averaged_odds WHERE season_year = ?", (year,)
-            )
-            rows = self.cursor.fetchall()
-            event_odds_list = [
+            events.append(
                 EventOdds(
-                    event_id=row[0],
-                    season_year=row[1],
-                    week=row[2],
-                    short_name=row[5],
-                    spread=row[6],
+                    event_id=event_id,
+                    season_year=season_year,
+                    week=week,
+                    short_name=short_name,
+                    spread=spread,
                 )
-                for row in rows
-            ]
-            return event_odds_list
-        except sqlite3.Error as e:
-            print(f"Error fetching odds data for year {year}: {e}")
-            return []
-
-    def close(self):
-        """Close the database connection."""
-        self.conn.close()
+            )
+        except (TypeError, ValueError):
+            continue
+    return events

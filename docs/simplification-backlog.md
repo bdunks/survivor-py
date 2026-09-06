@@ -401,7 +401,7 @@ Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-
 
 ## SIMP-04 — Simplify scraper, models, and SQLite lifecycle
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-03
@@ -460,7 +460,10 @@ Replace state-free service classes and generic single-use helpers with direct fu
 
 ### Handoff
 
-_Blocked by SIMP-03._
+Replaced the state-free CBS and SQLite service classes with module-level functions. `parse_events` accepts saved HTML or parsed soup, retains the request timeout and HTTP status check, keeps numeric/`PK` spreads, and skips invalid cards; `EventOdds` now rejects malformed matchups instead of producing `UNK` teams.
+SQLite functions own and close local connections, preserve upsert and season filtering, create only the current columns, retain legacy extra columns, and drop only the unused legacy trigger. Updated all app data paths and replaced wildcard service exports with explicit exports.
+Added `test_simp04.py` for fixture parsing, temporary-database lifecycle, and refresh/events API flows; updated SIMP-01's malformed-matchup assertion to pass.
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, focused `uv run python -m unittest test_simp04 -v`, and a dependency-free ASGI refresh/events smoke check all pass. The optional FastAPI `TestClient` smoke requires undeclared `httpx`, so no dependency was added. The graph was refreshed with no skipped or parse-partial files.
 
 ---
 

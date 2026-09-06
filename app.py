@@ -29,7 +29,7 @@ from config_store import (
 )
 from models import EventOdds, Pick
 from optimizer import PickOptimizer
-from services import CBSSportsService, DatabaseService
+from services import fetch_events, fetch_odds_data, save_odds_data
 
 app = FastAPI(
     title="NFL Survivor Pool Optimizer",
@@ -251,12 +251,9 @@ async def refresh_data(year: int = Query(..., ge=2020, le=2030)):
         config = load_config()
         current_week = config["current_week"]
 
-        odds_service = CBSSportsService()
-        events = odds_service.fetch_events(year, starting_week=current_week)
+        events = fetch_events(year, starting_week=current_week)
 
-        db_service = DatabaseService()
-        db_service.save_odds_data(events)
-        db_service.close()
+        save_odds_data(events)
 
         return {
             "message": f"Refreshed {len(events)} events for {year}",
@@ -272,9 +269,7 @@ async def refresh_data(year: int = Query(..., ge=2020, le=2030)):
 async def get_events(year: int = Query(..., ge=2020, le=2030)):
     """Get all events for specified year"""
     try:
-        db_service = DatabaseService()
-        events = db_service.fetch_odds_data(year)
-        db_service.close()
+        events = fetch_odds_data(year)
 
         return [event_to_response(event) for event in events]
     except Exception as e:  # noqa: BLE001
@@ -306,9 +301,7 @@ async def optimize_picks(
         config = load_config()
         user_picks = config["picks"]
 
-        db_service = DatabaseService()
-        events = db_service.fetch_odds_data(year)
-        db_service.close()
+        events = fetch_odds_data(year)
 
         if not events:
             raise HTTPException(
@@ -378,9 +371,7 @@ async def optimize_single_algorithm(
         config = load_config()
         user_picks = config["picks"]
 
-        db_service = DatabaseService()
-        events = db_service.fetch_odds_data(year)
-        db_service.close()
+        events = fetch_odds_data(year)
 
         optimizer = PickOptimizer()
 
@@ -428,9 +419,7 @@ async def export_csv(
         config = load_config()
         user_picks = config["picks"]
 
-        db_service = DatabaseService()
-        events = db_service.fetch_odds_data(year)
-        db_service.close()
+        events = fetch_odds_data(year)
 
         optimizer = PickOptimizer()
 
@@ -509,9 +498,7 @@ async def get_status():
         config = load_config()
 
         # Get database event count
-        db_service = DatabaseService()
-        events = db_service.fetch_odds_data(datetime.now().year)  # noqa: DTZ005
-        db_service.close()
+        events = fetch_odds_data(datetime.now().year)  # noqa: DTZ005
 
         return StatusResponse(
             current_week=config["current_week"],
