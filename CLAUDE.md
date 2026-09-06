@@ -11,11 +11,13 @@ This is a comprehensive NFL survivor pool optimizer with both **web interface** 
 ### Web Interface (Primary)
 
 ```bash
-# Install dependencies (UV recommended)
-uv add fastapi uvicorn[standard] pydantic python-multipart requests termcolor beautifulsoup4
+# Install tools
+mise install
+# Install dependencies from pyproject.toml
+uv sync
 
 # Start web server for development
-uvicorn app:app --reload --host 127.0.0.1 --port 8000
+mise run dev
 
 # Access web interface
 # http://127.0.0.1:8000/
@@ -48,14 +50,14 @@ python main.py --export
 
 ### Code Formatting
 
-The project uses Ruff for code formatting and linting (configured in VS Code settings):
+The project uses Ruff for code formatting and linting via Mise tasks:
 
 ```bash
-# Format code (if ruff is installed)
-ruff format .
+# Format code
+mise run format
 
-# Lint code (if ruff is installed)
-ruff check .
+# Lint code
+mise run lint
 ```
 
 ## Architecture
@@ -158,13 +160,12 @@ SQLite database (`odds_data.db`) with `averaged_odds` table:
 
 ## Dependencies
 
-Core dependencies (requirements.txt):
+Dependencies are declared in `pyproject.toml`:
 
 **Web Interface:**
 - `fastapi`: Modern web framework for APIs
-- `uvicorn[standard]`: ASGI server for FastAPI
+- `uvicorn`: ASGI server for FastAPI
 - `pydantic`: Data validation using Python type hints
-- `python-multipart`: Form data parsing
 
 **Core Application:**
 - `requests`: HTTP client for CBS Sports data
@@ -214,7 +215,7 @@ def find_optimal_picks_custom(self, events, split_week, user_defined_picks=None)
         events=events,
         split_week=split_week,
         user_defined_picks=user_defined_picks,
-        sort_key=lambda event: your_custom_logic(event)
+        sort_key=lambda event: your_custom_logic(event),
     )
 ```
 
@@ -229,6 +230,7 @@ Direct database access available via `DatabaseService`:
 
 ```python
 from services import DatabaseService
+
 db = DatabaseService()
 events = db.fetch_odds_data(2024)
 # Custom analysis

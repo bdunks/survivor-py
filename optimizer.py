@@ -1,17 +1,19 @@
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
+
 from models import EventOdds, Pick
 
 
 class PickOptimizer:
     def __find_optimal_picks(
         self,
-        events: List[EventOdds],
+        events: list[EventOdds],
         split_week: int,
-        user_defined_picks: Optional[List[Pick]] = None,
-        sort_key: Optional[Callable[[EventOdds], Any]] = None,
-        second_pass_sort_key: Optional[Callable[[EventOdds], Any]] = None,
-        sort_key_second_half: Optional[Callable[[EventOdds], Any]] = None,
-    ) -> List[Pick]:
+        user_defined_picks: list[Pick] | None = None,
+        sort_key: Callable[[EventOdds], Any] | None = None,
+        second_pass_sort_key: Callable[[EventOdds], Any] | None = None,
+        sort_key_second_half: Callable[[EventOdds], Any] | None = None,
+    ) -> list[Pick]:
         picks = user_defined_picks.copy() if user_defined_picks else []
 
         # Create a set to store the weeks of user-defined picks so they aren't later overwritten
@@ -43,7 +45,7 @@ class PickOptimizer:
             )
 
         # Helper function to add picks
-        def add_picks(sorted_events: List[EventOdds]):
+        def add_picks(sorted_events: list[EventOdds]):
             nonlocal picks, picked_teams, picked_weeks
             for event in sorted_events:
                 if (
@@ -63,9 +65,9 @@ class PickOptimizer:
                 if len(picks) == 18:
                     break
 
-        def second_pass(sorted_events: List[EventOdds], depth: int = 0):
+        def second_pass(sorted_events: list[EventOdds], depth: int = 0):
             nonlocal picks, picked_teams, picked_weeks
-            
+
             # Prevent infinite recursion with depth limit
             if depth > 50:  # Reasonable limit for NFL teams/weeks
                 return
@@ -111,10 +113,10 @@ class PickOptimizer:
 
     def find_optimal_picks_best_spread(
         self,
-        events: List[EventOdds],
+        events: list[EventOdds],
         split_week,
-        user_defined_picks: Optional[List[Pick]] = None,
-    ) -> List[Pick]:
+        user_defined_picks: list[Pick] | None = None,
+    ) -> list[Pick]:
         return self.__find_optimal_picks(
             events=events,
             split_week=split_week,
@@ -124,10 +126,10 @@ class PickOptimizer:
 
     def find_optimal_picks_back_to_front(
         self,
-        events: List[EventOdds],
+        events: list[EventOdds],
         split_week,
-        user_defined_picks: Optional[List[Pick]] = None,
-    ) -> List[Pick]:
+        user_defined_picks: list[Pick] | None = None,
+    ) -> list[Pick]:
         return self.__find_optimal_picks(
             events=events,
             split_week=split_week,
@@ -137,7 +139,7 @@ class PickOptimizer:
         )
 
     def calculate_future_value(
-        self, team: str, week: int, events: List[EventOdds], split_week: int = 18
+        self, team: str, week: int, events: list[EventOdds], split_week: int = 18
     ) -> float:
         """
         Calculate the future value of a team based on future spreads.
@@ -178,8 +180,8 @@ class PickOptimizer:
         return future_value
 
     def calculate_future_value_for_all_teams(
-        self, week: int, future_events: List[EventOdds]
-    ) -> List[float]:
+        self, week: int, future_events: list[EventOdds]
+    ) -> list[float]:
         """
         Calculate the future value of all teams based on future spreads.
 
@@ -204,10 +206,10 @@ class PickOptimizer:
 
     def find_optimal_picks_weighted_future_value(
         self,
-        events: List[EventOdds],
+        events: list[EventOdds],
         split_week,
-        user_defined_picks: Optional[List[Pick]] = None,
-    ) -> List[Pick]:
+        user_defined_picks: list[Pick] | None = None,
+    ) -> list[Pick]:
         """
         Find optimal picks using a combination of best spread and future value.
         Specifically, the lowest future value should be considered when picking the best spread.

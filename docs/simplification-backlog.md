@@ -253,7 +253,7 @@ Checks: `uv run python -m unittest discover -v` passes (9 tests, 1 documented ex
 
 ## SIMP-02 — Establish toolchain and remove repository debris
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-01
@@ -318,7 +318,16 @@ Make Mise the single task/tool entry point, establish a clean Ruff baseline, and
 
 ### Handoff
 
-_Blocked by SIMP-01._
+Implemented the SIMP-02 toolchain and repository cleanup.
+
+- Added Ruff `0.16.6` plus `dev`, `lint`, `format`, `format-check`, `test`, and composed `check` tasks to `mise.toml`.
+- Removed Poe/poethepoet, `python-multipart`, and Uvicorn's `standard` extra; regenerated `uv.lock`.
+- Read the malformed `requirements.txt` directly as UTF-16LE, confirmed it duplicated the dependency list, then deleted it.
+- Deleted the obsolete API documentation and web-interface test documents. Untracked local/runtime artifacts and added ignore rules; `config.example.json` retains every current configuration field.
+- `.mcp.json`, Claude local settings, the LLM export config, and Playwright screenshots had no repository consumers. `config.json` remains available to the existing runtime but is now ignored. `.codebase-memory` is generated local graph state, not an intentional shared team asset, so it remains ignored rather than tracked.
+- Ruff autofix and formatting completed. Existing out-of-scope broad exception, timezone, and long-lived file patterns use explicit `noqa` directives so this task does not change source behavior; later simplification tasks can address them.
+
+Checks: `mise install` installed Ruff `0.16.6`; `mise run lint`, `mise run format-check`, `mise run test` (9 tests, 1 documented expected failure), `mise run check`, `uv sync --locked`, and `python -m compileall -q .` all passed. Plain `uv run uvicorn app:app --reload --host 127.0.0.1 --port 8765` also started successfully with Uvicorn `StatReload` and served `/api/teams`.
 
 ---
 

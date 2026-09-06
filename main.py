@@ -3,7 +3,7 @@ import csv
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any
 
 import termcolor
 
@@ -29,112 +29,129 @@ def parse_arguments():
     parser.add_argument(
         "--year",
         type=int,
-        default=datetime.now().year,
+        default=datetime.now().year,  # noqa: DTZ005
         help="Year for which to fetch odds data",
     )
     parser.add_argument("--set-week", type=int, help="Set current week (1-18)")
-    parser.add_argument("--add-pick", type=str, help="Add pick in format TEAM:WEEK:SPREAD")
-    parser.add_argument("--clear-pick", type=str, help="Clear pick for week number or 'all'")
-    parser.add_argument("--status", action="store_true", help="Show current configuration")
+    parser.add_argument(
+        "--add-pick", type=str, help="Add pick in format TEAM:WEEK:SPREAD"
+    )
+    parser.add_argument(
+        "--clear-pick", type=str, help="Clear pick for week number or 'all'"
+    )
+    parser.add_argument(
+        "--status", action="store_true", help="Show current configuration"
+    )
     return parser.parse_args()
 
 
-def validate_picks(picks: List[Pick]) -> None:
+def validate_picks(picks: list[Pick]) -> None:
     """Validate user picks for common errors."""
     weeks_used = set()
     for pick in picks:
         if not (1 <= pick.week <= 18):
-            raise ValueError(f"Invalid week: {pick.week}. Week must be between 1 and 18.")
+            raise ValueError(
+                f"Invalid week: {pick.week}. Week must be between 1 and 18."
+            )
         if pick.week in weeks_used:
-            raise ValueError(f"Duplicate week found: {pick.week}. Each week can only be used once.")
+            raise ValueError(
+                f"Duplicate week found: {pick.week}. Each week can only be used once."
+            )
         weeks_used.add(pick.week)
-        
+
         # Basic team name validation (2-3 character abbreviation)
         if not isinstance(pick.team, str) or len(pick.team) < 2 or len(pick.team) > 3:
-            raise ValueError(f"Invalid team abbreviation: {pick.team}. Must be 2-3 characters.")
+            raise ValueError(
+                f"Invalid team abbreviation: {pick.team}. Must be 2-3 characters."
+            )
 
 
-def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     """Validate and normalize configuration data."""
     # Validate current_week
-    if not isinstance(config.get('current_week'), int):
+    if not isinstance(config.get("current_week"), int):
         print("Warning: current_week should be an integer, defaulting to 1")
-        config['current_week'] = 1
+        config["current_week"] = 1
 
-    if not (1 <= config['current_week'] <= 18):
-        print(f"Warning: current_week {config['current_week']} invalid, defaulting to 1")
-        config['current_week'] = 1
+    if not (1 <= config["current_week"] <= 18):
+        print(
+            f"Warning: current_week {config['current_week']} invalid, defaulting to 1"
+        )
+        config["current_week"] = 1
 
     # Ensure picks is a list
-    if 'picks' not in config:
-        config['picks'] = []
-    elif not isinstance(config['picks'], list):
+    if "picks" not in config:
+        config["picks"] = []
+    elif not isinstance(config["picks"], list):
         print("Warning: picks should be a list, defaulting to empty list")
-        config['picks'] = []
+        config["picks"] = []
 
     # Validate algorithm
     valid_algorithms = ["best-spread", "weighted-future-value", "back-to-front"]
-    if not isinstance(config.get('algorithm'), str) or config.get('algorithm') not in valid_algorithms:
-        config['algorithm'] = "best-spread"
+    if (
+        not isinstance(config.get("algorithm"), str)
+        or config.get("algorithm") not in valid_algorithms
+    ):
+        config["algorithm"] = "best-spread"
 
     # Validate split_week
-    if not isinstance(config.get('split_week'), int):
-        config['split_week'] = 10
+    if not isinstance(config.get("split_week"), int):
+        config["split_week"] = 10
 
-    if not (1 <= config['split_week'] <= 18):
-        config['split_week'] = 10
+    if not (1 <= config["split_week"] <= 18):
+        config["split_week"] = 10
 
     return config
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load configuration from config.json file."""
     config_path = "config.json"
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
-            
+
             config = validate_config(config)
-            
+
             # Convert picks dictionaries to Pick objects
             picks = []
-            for pick_data in config.get('picks', []):
+            for pick_data in config.get("picks", []):
                 try:
                     if isinstance(pick_data, dict):
                         pick = Pick(
-                            team=pick_data['team'],
-                            week=pick_data['week'],
-                            spread=pick_data.get('spread', 0.0)
+                            team=pick_data["team"],
+                            week=pick_data["week"],
+                            spread=pick_data.get("spread", 0.0),
                         )
                         picks.append(pick)
                 except (KeyError, TypeError) as e:
                     print(f"Warning: Invalid pick data {pick_data}: {e}")
-            
+
             # Validate all picks
             try:
                 validate_picks(picks)
             except ValueError as e:
                 print(f"Configuration error: {e}")
                 picks = []
-            
+
             return {
-                'current_week': config['current_week'],
-                'user_picks': picks,
-                'algorithm': config['algorithm'],
-                'split_week': config['split_week']
+                "current_week": config["current_week"],
+                "user_picks": picks,
+                "algorithm": config["algorithm"],
+                "split_week": config["split_week"],
             }
-        
+
         except (json.JSONDecodeError, FileNotFoundError) as e:
             print(f"Warning: Could not load config.json: {e}")
             print("Using default configuration")
-    
+
     # Return default configuration
     return {
-        'current_week': 1,
-        'user_picks': [],
-        'algorithm': 'best-spread',
-        'split_week': 10
+        "current_week": 1,
+        "user_picks": [],
+        "algorithm": "best-spread",
+        "split_week": 10,
     }
 
 
@@ -142,31 +159,31 @@ def update_current_week(week: int) -> None:
     """Update current week in config.json file."""
     if not (1 <= week <= 18):
         raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
-    
+
     config_path = "config.json"
     config = {}
-    
+
     # Load existing config if it exists
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             pass
-    
+
     # Update current week
-    config['current_week'] = week
-    
+    config["current_week"] = week
+
     # Ensure picks array exists
-    if 'picks' not in config:
-        config['picks'] = []
-    
+    if "picks" not in config:
+        config["picks"] = []
+
     # Save updated config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
         print(f"Updated current week to {week}")
-    except IOError as e:
+    except OSError as e:
         print(f"Error updating config file: {e}")
         raise
 
@@ -175,7 +192,9 @@ def update_algorithm(algorithm: str) -> None:
     """Update algorithm setting in config.json file."""
     valid_algorithms = ["best-spread", "weighted-future-value", "back-to-front"]
     if algorithm not in valid_algorithms:
-        raise ValueError(f"Invalid algorithm: {algorithm}. Must be one of: {', '.join(valid_algorithms)}")
+        raise ValueError(
+            f"Invalid algorithm: {algorithm}. Must be one of: {', '.join(valid_algorithms)}"
+        )
 
     config_path = "config.json"
     config = {}
@@ -183,27 +202,27 @@ def update_algorithm(algorithm: str) -> None:
     # Load existing config if it exists
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             pass
 
     # Update algorithm
-    config['algorithm'] = algorithm
+    config["algorithm"] = algorithm
 
     # Ensure required fields exist
-    if 'current_week' not in config:
-        config['current_week'] = 1
-    if 'picks' not in config:
-        config['picks'] = []
-    if 'split_week' not in config:
-        config['split_week'] = 10
+    if "current_week" not in config:
+        config["current_week"] = 1
+    if "picks" not in config:
+        config["picks"] = []
+    if "split_week" not in config:
+        config["split_week"] = 10
 
     # Save updated config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Error updating config file: {e}")
         raise
 
@@ -211,7 +230,9 @@ def update_algorithm(algorithm: str) -> None:
 def update_split_week(split_week: int) -> None:
     """Update split week setting in config.json file."""
     if not (1 <= split_week <= 18):
-        raise ValueError(f"Invalid split week: {split_week}. Week must be between 1 and 18.")
+        raise ValueError(
+            f"Invalid split week: {split_week}. Week must be between 1 and 18."
+        )
 
     config_path = "config.json"
     config = {}
@@ -219,27 +240,27 @@ def update_split_week(split_week: int) -> None:
     # Load existing config if it exists
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             pass
 
     # Update split week
-    config['split_week'] = split_week
+    config["split_week"] = split_week
 
     # Ensure required fields exist
-    if 'current_week' not in config:
-        config['current_week'] = 1
-    if 'picks' not in config:
-        config['picks'] = []
-    if 'algorithm' not in config:
-        config['algorithm'] = 'best-spread'
+    if "current_week" not in config:
+        config["current_week"] = 1
+    if "picks" not in config:
+        config["picks"] = []
+    if "algorithm" not in config:
+        config["algorithm"] = "best-spread"
 
     # Save updated config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Error updating config file: {e}")
         raise
 
@@ -247,71 +268,69 @@ def update_split_week(split_week: int) -> None:
 def add_pick_to_config(pick_string: str) -> None:
     """Add pick to config.json file from TEAM:WEEK:SPREAD format."""
     try:
-        parts = pick_string.split(':')
+        parts = pick_string.split(":")
         if len(parts) != 3:
             raise ValueError("Pick must be in format TEAM:WEEK:SPREAD")
-        
+
         team, week_str, spread_str = parts
-        
+
         # Validate and parse components
         team = team.strip().upper()
         if len(team) < 2 or len(team) > 3:
-            raise ValueError(f"Invalid team abbreviation: {team}. Must be 2-3 characters.")
-        
+            raise ValueError(
+                f"Invalid team abbreviation: {team}. Must be 2-3 characters."
+            )
+
         week = int(week_str.strip())
         if not (1 <= week <= 18):
             raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
-        
+
         spread = float(spread_str.strip())
-        
+
     except (ValueError, IndexError) as e:
         print(f"Error parsing pick '{pick_string}': {e}")
         print("Format should be: TEAM:WEEK:SPREAD (e.g., SEA:1:6.0)")
         return
-    
+
     config_path = "config.json"
     config = {}
-    
+
     # Load existing config if it exists
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             pass
-    
+
     # Ensure required fields exist
-    if 'picks' not in config:
-        config['picks'] = []
-    if 'current_week' not in config:
-        config['current_week'] = 1
-    
+    if "picks" not in config:
+        config["picks"] = []
+    if "current_week" not in config:
+        config["current_week"] = 1
+
     # Check if week already has a pick and replace it
     existing_pick_index = None
-    for i, pick in enumerate(config['picks']):
-        if pick.get('week') == week:
+    for i, pick in enumerate(config["picks"]):
+        if pick.get("week") == week:
             existing_pick_index = i
             break
-    
-    new_pick = {
-        'team': team,
-        'week': week,
-        'spread': spread
-    }
-    
+
+    new_pick = {"team": team, "week": week, "spread": spread}
+
     if existing_pick_index is not None:
-        old_pick = config['picks'][existing_pick_index]
-        config['picks'][existing_pick_index] = new_pick
+        old_pick = config["picks"][existing_pick_index]
+        config["picks"][existing_pick_index] = new_pick
         print(f"Replaced existing pick for week {week}: {old_pick['team']} -> {team}")
     else:
-        config['picks'].append(new_pick)
+        config["picks"].append(new_pick)
         print(f"Added pick for week {week}: {team} ({spread:+.1f})")
-    
+
     # Save updated config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Error updating config file: {e}")
         raise
 
@@ -320,49 +339,51 @@ def clear_pick_from_config(week_or_all: str) -> None:
     """Clear pick(s) from config.json file."""
     config_path = "config.json"
     config = {}
-    
+
     # Load existing config if it exists
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             pass
-    
+
     # Ensure picks array exists
-    if 'picks' not in config:
-        config['picks'] = []
-    
-    if week_or_all.lower() == 'all':
+    if "picks" not in config:
+        config["picks"] = []
+
+    if week_or_all.lower() == "all":
         # Clear all picks
-        picks_count = len(config['picks'])
-        config['picks'] = []
+        picks_count = len(config["picks"])
+        config["picks"] = []
         print(f"Cleared all {picks_count} picks")
     else:
         # Clear specific week
         try:
             week = int(week_or_all)
             if not (1 <= week <= 18):
-                raise ValueError(f"Invalid week: {week}. Week must be between 1 and 18.")
+                raise ValueError(
+                    f"Invalid week: {week}. Week must be between 1 and 18."
+                )
         except ValueError as e:
             print(f"Error: {e}")
             print("Use a week number (1-18) or 'all'")
             return
-        
+
         # Find and remove the pick for the specified week
-        original_count = len(config['picks'])
-        config['picks'] = [pick for pick in config['picks'] if pick.get('week') != week]
-        
-        if len(config['picks']) < original_count:
+        original_count = len(config["picks"])
+        config["picks"] = [pick for pick in config["picks"] if pick.get("week") != week]
+
+        if len(config["picks"]) < original_count:
             print(f"Cleared pick for week {week}")
         else:
             print(f"No pick found for week {week}")
-    
+
     # Save updated config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Error updating config file: {e}")
         raise
 
@@ -370,20 +391,20 @@ def clear_pick_from_config(week_or_all: str) -> None:
 def show_configuration_status() -> None:
     """Display current configuration status."""
     config = load_config()
-    
+
     print("=== Configuration Status ===")
     print(f"Current Week: {config['current_week']}")
     print(f"Total Picks: {len(config['user_picks'])}")
-    
-    if config['user_picks']:
+
+    if config["user_picks"]:
         print("\nExisting Picks:")
         # Sort picks by week for better display
-        sorted_picks = sorted(config['user_picks'], key=lambda p: p.week)
+        sorted_picks = sorted(config["user_picks"], key=lambda p: p.week)
         for pick in sorted_picks:
             print(f"  Week {pick.week:2d}: {pick.team} ({pick.spread:+.1f})")
     else:
         print("\nNo picks configured")
-    
+
     print()
 
 
@@ -412,7 +433,7 @@ def print_to_console(all_picks):
         print(" | ".join(row))
 
 
-def export_to_csv(all_picks: List[EventOdds], filename="picks_data.csv", append=False):
+def export_to_csv(all_picks: list[EventOdds], filename="picks_data.csv", append=False):
     with open(filename, mode="a" if append else "w", newline="") as file:
         writer = csv.writer(file)
 
@@ -462,8 +483,8 @@ def export_to_csv(all_picks: List[EventOdds], filename="picks_data.csv", append=
 
 
 def compare_algorithms(
-    picks_best_spread: List[Pick],
-    picks_back_to_front: List[Pick],
+    picks_best_spread: list[Pick],
+    picks_back_to_front: list[Pick],
     start_week: int = 1,
     end_week: int = 18,
 ):
@@ -492,9 +513,9 @@ def compare_algorithms(
 
 
 def compare_picks(
-    algo_1: List[Pick],
+    algo_1: list[Pick],
     algo_1_name: str,
-    algo_2: List[Pick],
+    algo_2: list[Pick],
     algo_2_name: str,
     start_week: int = 1,
     end_week: int = 18,
@@ -633,29 +654,29 @@ def main():
     if args.status:
         show_configuration_status()
         return
-    
+
     if args.set_week is not None:
         try:
             update_current_week(args.set_week)
         except ValueError as e:
             print(f"Error: {e}")
             return
-    
+
     if args.add_pick:
         add_pick_to_config(args.add_pick)
         return
-    
+
     if args.clear_pick:
         clear_pick_from_config(args.clear_pick)
         return
 
     # Load configuration from config.json
     config = load_config()
-    current_week = config['current_week']
-    user_defined_picks = config['user_picks']
+    current_week = config["current_week"]
+    user_defined_picks = config["user_picks"]
 
     # Fetch fresh data from CBS Sports if a refresh is requested
-    events: List[EventOdds] = []
+    events: list[EventOdds] = []
     if refresh_requested:
         odds_service = CBSSportsService()
         events = odds_service.fetch_events(year, starting_week=current_week)

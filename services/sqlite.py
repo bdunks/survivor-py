@@ -1,5 +1,4 @@
 import sqlite3
-from typing import List, Tuple
 
 from models import EventOdds
 
@@ -47,7 +46,7 @@ class DatabaseService:
         self.conn.commit()
 
     def insert_or_replace_data(
-        self, table_name: str, columns: List[str], data: List[Tuple]
+        self, table_name: str, columns: list[str], data: list[tuple]
     ):
         """Insert or replace data into a given table."""
         placeholders = ", ".join(["?"] * len(columns))
@@ -81,7 +80,7 @@ class DatabaseService:
         ]
         self.insert_or_replace_data("averaged_odds", columns, formatted_data)
 
-    def fetch_odds_data(self, year: int) -> List[EventOdds]:
+    def fetch_odds_data(self, year: int) -> list[EventOdds]:
         """Fetch the averaged odds data from the database for a specific year."""
         try:
             self.cursor.execute(

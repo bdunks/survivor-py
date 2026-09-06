@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 
 @dataclass
@@ -27,14 +27,16 @@ class EventOdds:
             self.favored_team = self.home_team if self.spread <= 0 else self.away_team
         except (ValueError, AttributeError) as e:
             print(f"Warning: Could not parse game '{self.short_name}': {e}")
-            print("This game will be skipped. CBS Sports may have changed their format.")
+            print(
+                "This game will be skipped. CBS Sports may have changed their format."
+            )
             # Set default values to prevent further errors
             self.away_team = "UNK"
-            self.home_team = "UNK" 
+            self.home_team = "UNK"
             self.favored_team = "UNK"
 
 
 class Pick(NamedTuple):
     team: str
     week: int
-    spread: Optional[float] = None
+    spread: float | None = None

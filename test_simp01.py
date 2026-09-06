@@ -12,7 +12,6 @@ from main import add_pick_to_config, load_config, update_current_week
 from models import EventOdds, Pick
 from optimizer import PickOptimizer
 
-
 ALGORITHM_METHODS = {
     "best-spread": "find_optimal_picks_best_spread",
     "back-to-front": "find_optimal_picks_back_to_front",
@@ -77,7 +76,9 @@ def horizon_events():
             )
         else:
             events.append(
-                fixture_event(week * 10, week, f"T{week:02}", 4.0 + week / 100, f"O{week}")
+                fixture_event(
+                    week * 10, week, f"T{week:02}", 4.0 + week / 100, f"O{week}"
+                )
             )
     return events
 
@@ -95,7 +96,9 @@ class OptimizerCharacterizationTests(unittest.TestCase):
         for split_week in (10, 14, 18):
             for slug, method_name in ALGORITHM_METHODS.items():
                 with self.subTest(split_week=split_week, algorithm=slug):
-                    picks = getattr(optimizer, method_name)(events, split_week, [user_pick])
+                    picks = getattr(optimizer, method_name)(
+                        events, split_week, [user_pick]
+                    )
                     weeks = [pick.week for pick in picks]
                     teams = [pick.team for pick in picks]
 
@@ -111,14 +114,18 @@ class OptimizerCharacterizationTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                split_week: optimizer.calculate_future_value("SAV", 13, events, split_week)
+                split_week: optimizer.calculate_future_value(
+                    "SAV", 13, events, split_week
+                )
                 for split_week in (10, 14, 18)
             },
             {10: 0, 14: 7, 18: 59},
         )
 
         week_14_horizon = optimizer.find_optimal_picks_weighted_future_value(events, 14)
-        full_season_horizon = optimizer.find_optimal_picks_weighted_future_value(events, 18)
+        full_season_horizon = optimizer.find_optimal_picks_weighted_future_value(
+            events, 18
+        )
 
         self.assertEqual(pick_for_week(week_14_horizon, 14).team, "SAV")
         self.assertEqual(pick_for_week(full_season_horizon, 14).team, "NOW")
@@ -168,7 +175,9 @@ class OptimizerCharacterizationTests(unittest.TestCase):
         }
 
         self.assertEqual(actual_api_routes, EXPECTED_API_ROUTES)
-        self.assertEqual(sum(getattr(route, "path", "") == "" for route in application.app.routes), 1)
+        self.assertEqual(
+            sum(getattr(route, "path", "") == "" for route in application.app.routes), 1
+        )
 
 
 class ConfigurationCharacterizationTests(unittest.TestCase):

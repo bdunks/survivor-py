@@ -36,8 +36,9 @@ Survivor pools (also known as elimination pools) are fantasy football contests w
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- UV package manager (recommended) or pip
+- Python 3.13 or higher
+- Mise
+- UV package manager
 
 ### Quick Start (Web Interface)
 
@@ -49,16 +50,13 @@ cd survivor-py
 
 2. Install dependencies:
 ```bash
-# Using UV (recommended)
-uv add fastapi uvicorn[standard] pydantic python-multipart requests termcolor beautifulsoup4
-
-# Or using pip
-pip install -r requirements.txt
+mise install
+uv sync
 ```
 
 3. Start the web interface:
 ```bash
-uvicorn app:app --reload --host 127.0.0.1 --port 8000
+mise run dev
 ```
 
 4. Open your browser to: **http://127.0.0.1:8000/**
@@ -75,7 +73,7 @@ python main.py --help
 ### 🌐 Web Interface (Recommended)
 
 #### Getting Started
-1. Start the server: `uvicorn app:app --reload --host 127.0.0.1 --port 8000`
+1. Start the server: `mise run dev`
 2. Navigate to: **http://127.0.0.1:8000/**
 3. The interface loads automatically with current configuration
 
@@ -218,7 +216,6 @@ survivor-py/
 ├── main.py                 # Command-line interface (original)
 ├── models.py               # Core data models (EventOdds, Pick)
 ├── optimizer.py            # Pick optimization algorithms  
-├── requirements.txt        # Python dependencies
 ├── config.json            # User configuration and picks (auto-created)
 ├── odds_data.db           # SQLite database (auto-created)
 ├── static/
@@ -348,7 +345,7 @@ def find_optimal_picks_custom(self, events, split_week, user_defined_picks=None)
         events=events,
         split_week=split_week,
         user_defined_picks=user_defined_picks,
-        sort_key=lambda event: your_custom_logic(event)
+        sort_key=lambda event: your_custom_logic(event),
     )
 ```
 

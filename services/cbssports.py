@@ -74,16 +74,22 @@ class CBSSportsService:
                 if odds_home:
                     odds_home_text = odds_home.get_text(strip=True)
                     try:
-                        spread = 0.0 if odds_home_text == "PK" else float(odds_home_text)
+                        spread = (
+                            0.0 if odds_home_text == "PK" else float(odds_home_text)
+                        )
                     except ValueError:
                         # If parsing fails, use default
                         spread = 0.0
-                        print(f"Warning - Week {week_number} - Could not parse spread '{odds_home_text}', using default 0.0")
+                        print(
+                            f"Warning - Week {week_number} - Could not parse spread '{odds_home_text}', using default 0.0"
+                        )
 
                 # If spread is still None (no odds_home element found), use default
                 if spread is None:
                     spread = 0.0
-                    print(f"Warning - Week {week_number} - No spread found for {short_name or 'unknown game'}, using default 0.0")
+                    print(
+                        f"Warning - Week {week_number} - No spread found for {short_name or 'unknown game'}, using default 0.0"
+                    )
 
                 # Only skip if critical data is missing
                 error = self.check(event_id, short_name, spread)
@@ -113,10 +119,14 @@ class CBSSportsService:
         print(
             f"Processing complete. Total events processed: {len(results)}, Total errors: {error_count}"
         )
-        
+
         # Provide helpful message if no data was retrieved
         if len(results) == 0 and error_count > 0:
-            print("Warning: No data was retrieved. Please check your internet connection and try again.")
-            print("If the problem persists, CBS Sports may have changed their website format.")
+            print(
+                "Warning: No data was retrieved. Please check your internet connection and try again."
+            )
+            print(
+                "If the problem persists, CBS Sports may have changed their website format."
+            )
 
         return results

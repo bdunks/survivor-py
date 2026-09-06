@@ -37,17 +37,18 @@
 #     ]
 # )
 
-from typing import Any, Iterable
 import csv
 import logging
 import time
+from collections.abc import Iterable
+from typing import Any
 
 
 class CSVLogger(logging.Logger):
     def __init__(self, name):
         super().__init__(name)
-        self.filename = f"log/{name}_{str(int(time.time()))}.csv"
-        self.file = open(self.filename, "a", newline="")
+        self.filename = f"log/{name}_{int(time.time())!s}.csv"
+        self.file = open(self.filename, "a", newline="")  # noqa: SIM115
         self.writer = csv.writer(self.file)
 
     def log(self, msg: Iterable[Any], level: int = logging.INFO):

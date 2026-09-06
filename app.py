@@ -2,7 +2,6 @@ import csv
 import os
 import tempfile
 from datetime import datetime
-from typing import List
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,8 +22,8 @@ from main import (
     add_pick_to_config,
     clear_pick_from_config,
     load_config,
-    update_current_week,
     update_algorithm,
+    update_current_week,
     update_split_week,
 )
 from models import EventOdds, Pick
@@ -124,7 +123,7 @@ async def get_config():
             algorithm=config["algorithm"],
             split_week=config["split_week"],
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -139,7 +138,7 @@ async def update_week(week: int):
         return {"message": f"Updated current week to {week}", "week": week}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -151,14 +150,14 @@ async def update_config_algorithm(algorithm: str):
         if algorithm not in valid_algorithms:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid algorithm: {algorithm}. Must be one of: {', '.join(valid_algorithms)}"
+                detail=f"Invalid algorithm: {algorithm}. Must be one of: {', '.join(valid_algorithms)}",
             )
 
         update_algorithm(algorithm)
         return {"message": f"Updated algorithm to {algorithm}", "algorithm": algorithm}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -167,13 +166,18 @@ async def update_config_split_week(split_week: int):
     """Update split week setting"""
     try:
         if not (1 <= split_week <= 18):
-            raise HTTPException(status_code=400, detail="Split week must be between 1 and 18")
+            raise HTTPException(
+                status_code=400, detail="Split week must be between 1 and 18"
+            )
 
         update_split_week(split_week)
-        return {"message": f"Updated split week to {split_week}", "split_week": split_week}
+        return {
+            "message": f"Updated split week to {split_week}",
+            "split_week": split_week,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -203,7 +207,7 @@ async def add_pick(pick_request: PickRequest):
                 )
             ),
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -216,7 +220,7 @@ async def clear_week_pick(week: int):
 
         clear_pick_from_config(str(week))
         return {"message": f"Cleared pick for week {week}", "week": week}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -226,7 +230,7 @@ async def clear_all_picks():
     try:
         clear_pick_from_config("all")
         return {"message": "Cleared all picks"}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -253,11 +257,11 @@ async def refresh_data(year: int = Query(..., ge=2020, le=2030)):
             "events_count": len(events),
             "starting_week": current_week,
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/data/events", response_model=List[EventOddsResponse])
+@app.get("/api/data/events", response_model=list[EventOddsResponse])
 async def get_events(year: int = Query(..., ge=2020, le=2030)):
     """Get all events for specified year"""
     try:
@@ -266,7 +270,7 @@ async def get_events(year: int = Query(..., ge=2020, le=2030)):
         db_service.close()
 
         return [event_to_response(event) for event in events]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -281,7 +285,8 @@ async def get_teams():
 
 @app.get("/api/optimize/{split_week}", response_model=OptimizationResponse)
 async def optimize_picks(
-    split_week: int, year: int = Query(datetime.now().year, ge=2020, le=2030)
+    split_week: int,
+    year: int = Query(datetime.now().year, ge=2020, le=2030),  # noqa: DTZ005
 ):
     """Get optimization results for all algorithms at specified split week"""
     try:
@@ -341,7 +346,7 @@ async def optimize_picks(
 
         return OptimizationResponse(split_week=split_week, algorithms=algorithms)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -349,7 +354,7 @@ async def optimize_picks(
 async def optimize_single_algorithm(
     split_week: int,
     algorithm: str,
-    year: int = Query(datetime.now().year, ge=2020, le=2030),
+    year: int = Query(datetime.now().year, ge=2020, le=2030),  # noqa: DTZ005
 ):
     """Get optimization results for single algorithm"""
     try:
@@ -392,7 +397,7 @@ async def optimize_single_algorithm(
             total_spread=sum(pick.spread or 0 for pick in picks),
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -405,7 +410,7 @@ async def export_csv(
     algorithm: str = Query(
         "all", regex="^(all|best-spread|back-to-front|weighted-future-value)$"
     ),
-    year: int = Query(datetime.now().year, ge=2020, le=2030),
+    year: int = Query(datetime.now().year, ge=2020, le=2030),  # noqa: DTZ005
 ):
     """Export picks to CSV file"""
     try:
@@ -419,7 +424,7 @@ async def export_csv(
         optimizer = PickOptimizer()
 
         # Create temporary file
-        temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv")
+        temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv")  # noqa: SIM115
         writer = csv.writer(temp_file)
 
         # Write header
@@ -482,7 +487,7 @@ async def export_csv(
             path=temp_file.name, filename=filename, media_type="text/csv"
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -494,7 +499,7 @@ async def get_status():
 
         # Get database event count
         db_service = DatabaseService()
-        events = db_service.fetch_odds_data(datetime.now().year)
+        events = db_service.fetch_odds_data(datetime.now().year)  # noqa: DTZ005
         db_service.close()
 
         return StatusResponse(
@@ -503,7 +508,7 @@ async def get_status():
             database_events=len(events),
             last_refresh=None,  # Could be implemented with a timestamp file
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
