@@ -59,9 +59,13 @@ class CBSSportsService:
 
                 # Get the data-abbrev attribute
                 data_abbrev = card.get("data-abbrev")
+                short_name = None
 
                 if data_abbrev:
                     short_name = data_abbrev.split("_")[-1]
+
+                # Initialize spread with default value
+                spread = None
 
                 # Find the in-progress-odds-home element within the card
                 odds_home = card.find("td", class_="in-progress-odds-home")
@@ -70,16 +74,23 @@ class CBSSportsService:
                 if odds_home:
                     odds_home_text = odds_home.get_text(strip=True)
                     try:
-                        spread = 0 if odds_home_text == "PK" else float(odds_home_text)
+                        spread = 0.0 if odds_home_text == "PK" else float(odds_home_text)
                     except ValueError:
-                        pass
+                        # If parsing fails, use default
+                        spread = 0.0
+                        print(f"Warning - Week {week_number} - Could not parse spread '{odds_home_text}', using default 0.0")
 
+                # If spread is still None (no odds_home element found), use default
+                if spread is None:
+                    spread = 0.0
+                    print(f"Warning - Week {week_number} - No spread found for {short_name or 'unknown game'}, using default 0.0")
+
+                # Only skip if critical data is missing
                 error = self.check(event_id, short_name, spread)
                 if error:
                     print(
-                        f"Error - Week {week_number} - Type - {error.type}{' -- short_name: ' + short_name if short_name else ''}"
+                        f"Error - Week {week_number} - Missing critical data - {error.type}{' -- short_name: ' + short_name if short_name else ''}"
                     )
-
                     error_count += 1
                     continue
 

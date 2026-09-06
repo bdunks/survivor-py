@@ -2,5 +2,8 @@ __pycache__/
 .venv/
 .vscode
 llm_context/
+settings.local.json
+
+.codebase-memory/
 
 *.db

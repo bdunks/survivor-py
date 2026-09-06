@@ -1,37 +1,6 @@
 {
-  "current_week": 7,
-  "picks": [
-    {
-      "team": "ARI",
-      "week": 1,
-      "spread": 0.0
-    },
-    {
-      "team": "BAL",
-      "week": 2,
-      "spread": 0.0
-    },
-    {
-      "team": "SEA",
-      "week": 3,
-      "spread": 0.0
-    },
-    {
-      "team": "HOU",
-      "week": 4,
-      "spread": 0.0
-    },
-    {
-      "team": "IND",
-      "week": 5,
-      "spread": 0.0
-    },
-    {
-      "team": "GB",
-      "week": 6,
-      "spread": 0.0
-    }
-  ],
+  "current_week": 1,
+  "picks": [],
   "algorithm": "best-spread",
   "split_week": 18
 }
