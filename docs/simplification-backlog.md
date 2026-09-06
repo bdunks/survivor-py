@@ -192,7 +192,7 @@ of implementing it silently.
 
 ## SIMP-01 — Characterize retained behavior
 
-**Status:** ready  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** none
@@ -241,7 +241,13 @@ If assertion 5 or 8 fails against current behavior, record it as an expected cor
 
 ### Handoff
 
-_Not started._
+Added `test_simp01.py` with deterministic in-memory fixtures and temporary-directory configuration tests; production code was unchanged.
+
+Characterization tests cover all three optimizer methods, user-pick preservation, unique/sorted 18-week plans at split weeks 10/14/18, valid `EventOdds` parsing, config load/save/defaults/replacement, stable algorithm slugs, and the current API route inventory.
+
+Intended-behavior assertions cover the week-14 horizon and week-18 full-season horizon. Current optimizer behavior satisfies those fixtures and still returns a full 18-week plan beyond the selected horizon; that retained-grid presentation is characterized separately from the optimization horizon. Malformed matchup rejection is an explicit `@unittest.expectedFailure`: `EventOdds` currently converts invalid names to `UNK`, so the correction belongs to SIMP-04 and the requirement was not weakened.
+
+Checks: `uv run python -m unittest discover -v` passes (9 tests, 1 documented expected failure); `python -m compileall -q .` passes. Mise has no tasks yet, so SIMP-02 lint/format/test tasks are not available.
 
 ---
 
