@@ -469,7 +469,7 @@ Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-
 
 ## SIMP-05 — Simplify optimizer internals without removing algorithms
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-04
@@ -522,7 +522,11 @@ Reduce optimizer complexity while preserving three distinct strategies and treat
 
 ### Handoff
 
-_Blocked by SIMP-04._
+Reworked `optimizer.py` around module-level algorithm functions and the single `ALGORITHM_DISPATCH` mapping used by the all-algorithm, single-algorithm, and CSV paths; the three slugs and display names remain unchanged. A small static `PickOptimizer` compatibility namespace keeps the pre-SIMP-05 call shape working without optimizer state.
+
+The shared selector now names the optimization horizon explicitly, selects horizon events before presentation-only later weeks, retains the 18-week grid, and preserves post-horizon user picks. Duplicate user weeks/teams are rejected. Future value is a direct aggregation; the unused all-team helper, recursive pass/depth guard, nonlocal state, impossible `None` path, and stale CSV logging comments are gone. The fixed-point replacement loop accepts only strictly higher spreads. Weighted exponent `2.5` and strategy constants are unchanged. Added a regression for post-horizon user-pick preservation.
+
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, and focused `uv run python -m unittest -v test_simp01 test_simp04` (16 tests) all pass. The full graph was refreshed after the code changes with no skipped or parse-partial files; changed-path coverage reports no recorded issues.
 
 ---
 

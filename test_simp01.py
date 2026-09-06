@@ -114,6 +114,21 @@ class OptimizerCharacterizationTests(unittest.TestCase):
                     self.assertEqual(len(teams), len(set(teams)))
                     self.assertEqual(weeks, list(range(1, 19)))
 
+    def test_post_horizon_user_pick_is_preserved_in_the_18_week_grid(self):
+        events = horizon_events()
+        user_pick = Pick(team="LCK", week=16, spread=99.0)
+        optimizer = PickOptimizer()
+
+        for split_week in (10, 14):
+            for slug, method_name in ALGORITHM_METHODS.items():
+                with self.subTest(split_week=split_week, algorithm=slug):
+                    picks = getattr(optimizer, method_name)(
+                        events, split_week, [user_pick]
+                    )
+                    self.assertIn(user_pick, picks)
+                    self.assertEqual([pick.week for pick in picks], list(range(1, 19)))
+                    self.assertEqual(len({pick.team for pick in picks}), len(picks))
+
     def test_split_week_controls_future_value_through_10_14_and_18(self):
         events = horizon_events()
         optimizer = PickOptimizer()

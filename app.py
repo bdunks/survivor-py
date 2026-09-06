@@ -28,7 +28,7 @@ from config_store import (
     update_split_week,
 )
 from models import EventOdds, Pick
-from optimizer import PickOptimizer
+from optimizer import ALGORITHM_DISPATCH
 from services import fetch_events, fetch_odds_data, save_odds_data
 
 app = FastAPI(
@@ -308,41 +308,19 @@ async def optimize_picks(
                 status_code=404, detail=f"No events found for year {year}"
             )
 
-        # Initialize optimizer
-        optimizer = PickOptimizer()
-
-        # Run all algorithms
         algorithms = {}
-
-        # Best Spread
-        picks_best_spread = optimizer.find_optimal_picks_best_spread(
-            events, split_week, user_picks
-        )
-        algorithms["bestSpread"] = OptimizationResult(
-            algorithm="Best Spread",
-            picks=[pick_to_response(pick) for pick in picks_best_spread],
-            total_spread=sum(pick.spread or 0 for pick in picks_best_spread),
-        )
-
-        # Back to Front
-        picks_back_to_front = optimizer.find_optimal_picks_back_to_front(
-            events, split_week, user_picks
-        )
-        algorithms["backToFront"] = OptimizationResult(
-            algorithm="Back to Front",
-            picks=[pick_to_response(pick) for pick in picks_back_to_front],
-            total_spread=sum(pick.spread or 0 for pick in picks_back_to_front),
-        )
-
-        # Weighted Future Value
-        picks_weighted = optimizer.find_optimal_picks_weighted_future_value(
-            events, split_week, user_picks
-        )
-        algorithms["futureValue"] = OptimizationResult(
-            algorithm="Weighted Future Value",
-            picks=[pick_to_response(pick) for pick in picks_weighted],
-            total_spread=sum(pick.spread or 0 for pick in picks_weighted),
-        )
+        for slug, result_key in (
+            ("best-spread", "bestSpread"),
+            ("back-to-front", "backToFront"),
+            ("weighted-future-value", "futureValue"),
+        ):
+            algorithm_name, optimize = ALGORITHM_DISPATCH[slug]
+            picks = optimize(events, split_week, user_picks)
+            algorithms[result_key] = OptimizationResult(
+                algorithm=algorithm_name,
+                picks=[pick_to_response(pick) for pick in picks],
+                total_spread=sum(pick.spread or 0 for pick in picks),
+            )
 
         return OptimizationResponse(split_week=split_week, algorithms=algorithms)
 
@@ -365,7 +343,7 @@ async def optimize_single_algorithm(
                 status_code=400, detail="Split week must be between 1 and 18"
             )
 
-        if algorithm not in ["best-spread", "back-to-front", "weighted-future-value"]:
+        if algorithm not in ALGORITHM_DISPATCH:
             raise HTTPException(status_code=400, detail="Invalid algorithm")
 
         config = load_config()
@@ -373,26 +351,11 @@ async def optimize_single_algorithm(
 
         events = fetch_odds_data(year)
 
-        optimizer = PickOptimizer()
-
-        if algorithm == "best-spread":
-            picks = optimizer.find_optimal_picks_best_spread(
-                events, split_week, user_picks
-            )
-            algo_name = "Best Spread"
-        elif algorithm == "back-to-front":
-            picks = optimizer.find_optimal_picks_back_to_front(
-                events, split_week, user_picks
-            )
-            algo_name = "Back to Front"
-        else:  # weighted-future-value
-            picks = optimizer.find_optimal_picks_weighted_future_value(
-                events, split_week, user_picks
-            )
-            algo_name = "Weighted Future Value"
+        algorithm_name, optimize = ALGORITHM_DISPATCH[algorithm]
+        picks = optimize(events, split_week, user_picks)
 
         return OptimizationResult(
-            algorithm=algo_name,
+            algorithm=algorithm_name,
             picks=[pick_to_response(pick) for pick in picks],
             total_spread=sum(pick.spread or 0 for pick in picks),
         )
@@ -421,8 +384,6 @@ async def export_csv(
 
         events = fetch_odds_data(year)
 
-        optimizer = PickOptimizer()
-
         # Create temporary file
         temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv")  # noqa: SIM115
         writer = csv.writer(temp_file)
@@ -435,34 +396,13 @@ async def export_csv(
         )
         writer.writerow(header)
 
-        algorithms_to_export = []
         if algorithm == "all":
-            algorithms_to_export = [
-                ("best-spread", "Best Spread"),
-                ("back-to-front", "Back to Front"),
-                ("weighted-future-value", "Weighted Future Value"),
-            ]
+            algorithms_to_export = ALGORITHM_DISPATCH.items()
         else:
-            algo_map = {
-                "best-spread": "Best Spread",
-                "back-to-front": "Back to Front",
-                "weighted-future-value": "Weighted Future Value",
-            }
-            algorithms_to_export = [(algorithm, algo_map[algorithm])]
+            algorithms_to_export = ((algorithm, ALGORITHM_DISPATCH[algorithm]),)
 
-        for algo_key, algo_name in algorithms_to_export:
-            if algo_key == "best-spread":
-                picks = optimizer.find_optimal_picks_best_spread(
-                    events, split_week, user_picks
-                )
-            elif algo_key == "back-to-front":
-                picks = optimizer.find_optimal_picks_back_to_front(
-                    events, split_week, user_picks
-                )
-            else:
-                picks = optimizer.find_optimal_picks_weighted_future_value(
-                    events, split_week, user_picks
-                )
+        for algo_key, (algo_name, optimize) in algorithms_to_export:
+            picks = optimize(events, split_week, user_picks)
 
             # Create row
             row = [algo_name, split_week]
