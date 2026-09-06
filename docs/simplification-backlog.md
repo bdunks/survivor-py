@@ -765,7 +765,7 @@ The stale-reference scan finds no CLI, CSV, removed-route, Poe, or `requirements
 
 ## SIMP-09 — Independent final audit
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-08
@@ -821,7 +821,27 @@ This task starts read-only. It may fix only trivial documentation or formatting 
 
 ### Handoff
 
-_Blocked by SIMP-08._
+Completed the independent final audit at HEAD `480e2fae0a2c2a9dbc3cbec93e8a25a16c3af794` on branch `simplification`. No source, tests, dependencies, routes, or architecture were changed.
+
+**History and diff.** The initial `git status --short --branch` was clean. `git log --first-parent --reverse` from `1fce9c8426b5092b8d2625896f56d282073597bf` confirmed the expected sequence: `d702c13` backlog, then `6ed7411` SIMP-01, `cb61af0` SIMP-02, `5046b2e` SIMP-03, `dcfccd3` SIMP-04, `b0a6daf` SIMP-05, `7b753f3` SIMP-06, `ce9b22f` SIMP-07, and `480e2fa` SIMP-08. The complete `git diff --find-renames 1fce9c8426b5092b8d2625896f56d282073597bf..HEAD` was reviewed: 33 paths (15 modified, 14 deleted, 4 added; 2,259 insertions and 3,814 deletions). The deletions are the planned CLI, CSV/API documents, logger, malformed dependency manifest, local tooling/runtime artifacts, and browser screenshots; the retained `CHANGELOG.md` and backlog are historical records, not operational references.
+
+**Graph and coverage.** A fresh `index_repository(mode="full")` completed at generation `2026-09-06T21:07:48Z` with 254 nodes, 688 edges, zero skipped files, and zero parse-partial files. `check_index_coverage` over every changed path reported no recorded issue for all existing source/config/documentation paths. Deleted paths correctly report missing; `config.json` and `odds_data.db` are excluded by design. `uv.lock` is not represented as a source file in the graph and was parsed directly. The root scope reports only deliberate `.git`, `.venv`, caches, `services/__pycache__`, `config.json`, and `odds_data.db` exclusions. Graph results remain best-effort and were checked against direct source.
+
+**Routes, files, imports, and dependencies.** The final architecture has exactly 11 routes: the 10 retained APIs plus the static `ANY /` mount; no status, teams, CSV, or all-algorithm route remains. The tracked tree has 21 files and 10 Python files, matching the target architecture. Imports are explicit, with no wildcard imports. `pyproject.toml` declares exactly `beautifulsoup4`, `fastapi`, `pydantic`, `requests`, and `uvicorn`; the lock root has the same five direct dependencies. Each has a concrete use: BeautifulSoup parsing, FastAPI serving/routing, Pydantic API validation, Requests CBS fetching, and Uvicorn's Mise development command. No duplicate dependency declaration remains.
+
+**Symbols and traces.** `optimizer.ALGORITHM_DISPATCH` is defined once and is the sole validation/selection/display mapping. All three public optimizer entry points trace through `_find_optimal_picks` (LSP-resolved hop-one calls). `config_store.update_current_week`, `update_algorithm`, `update_split_week`, `update_pick`, `clear_pick`, and `clear_all_picks` each trace through `load_config` and `save_config`, with the expected single FastAPI handler caller. The small `PickOptimizer` static compatibility namespace is the documented SIMP-05 compatibility shim, not a factory, plugin, or new layer.
+
+**Required commands.** `uv sync --locked` exited 0. `mise run check` exited 0: Ruff passed and the standard-library suite ran 16 tests with `OK`. `python -m compileall -q .` exited 0. `git diff --check` reports only trailing spaces used for Markdown hard breaks in earlier handoff metadata; this is non-source historical formatting and was left unchanged to keep SIMP-09 limited to its Status/Handoff update. An additional `lsp_diagnostics` run found six `ty` typing diagnostics in `app.py`/`config_store.py`; `ty` is not part of the repository toolchain, and the diagnostics do not affect the passing lint, tests, runtime smoke, or browser workflow, so no follow-up was opened.
+
+**Algorithm and horizon answers.** Yes: the deterministic `horizon_events()` fixture produces pairwise-distinct 18-week team sequences for all three algorithms at horizon 18, while each stable slug remains selectable. The week-14 weighted result selects `SAV` in week 14 while the full-season horizon selects `NOW`; the fixture's future values are 0, 7, and 59 for horizons 10, 14, and 18. The selector processes horizon weeks first and only presents later weeks afterward, so post-horizon games cannot reserve a team at the expense of an in-horizon pick. The retained 18-week output and post-horizon manual-pick preservation tests pass.
+
+**API smoke.** A real `uv run uvicorn` server was exercised with dependency-free HTTP fetches. Every retained route passed: config GET 200; current-week, algorithm, and split-week PUTs 200; pick POST and both DELETE forms 200; refresh POST 200 (197 events from 2026 starting at week 4); events GET 200 (272 events); single-algorithm optimize GET 200 (18 picks); and static `/` GET 200. Boundary checks returned 400 for invalid weeks, split weeks, algorithms, teams, and delete weeks; 422 for invalid pick bodies and years outside 2020–2030; and 400/422 as appropriate for invalid optimization inputs. Invalid scraped-game fixture input returned only valid events (IDs 101 and 102), skipping missing identifiers, missing/malformed spreads, and malformed matchups without creating `UNK` or fabricated games.
+
+**Browser smoke.** The configured Playwright MCP path was unavailable (`0/0` MCP tools; the recorded attempt failed with `spawn cmd ENOENT`), so the available `/usr/bin/chromium` headless CDP path was used instead; no browser step was waived. The complete SIMP-06 workflow passed: initial config/grid load, 2025 season reload, current week persistence, all three algorithm selections with 18 suggestions each, projected end week 14 update, team ascending/descending/reset, all 18 week columns ascending/descending/reset, pick lock/unlock, one bulk DELETE reset request, refresh with one POST request, and zero browser console errors.
+
+**Resources, cleanliness, and final review.** SQLite connections are owned by `_connection` and closed in `finally`; atomic config temporary files are unlinked in `finally`; temporary test directories are context-managed. HTTP status errors are preserved by `raise_for_status`, while API validation returned the checked 4xx responses. Graph dead-function search found no unreferenced functions; wildcard-import search found none; production exception handlers are narrow (`ValueError`, JSON/OS/file errors, `RequestException`, and parse errors), with no broad or bare catches. Stale-feature search found legacy terms only in `CHANGELOG.md` and the backlog narrative; `README.md` and `CLAUDE.md` are clean. The API/frontend use one request helper, reset uses one bulk DELETE, no CSV control/request remains, and the final diff contains no speculative framework, layer, DI, ORM, plugin, factory, or other prohibited extensibility mechanism. API and browser runs backed up/restored ignored runtime files; the final `git status --short --branch` remained clean.
+
+No critical finding remains and no bounded follow-up is required.
 
 ---
 
