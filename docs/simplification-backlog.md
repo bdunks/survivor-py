@@ -532,7 +532,7 @@ Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-
 
 ## SIMP-06 — Simplify the frontend while preserving manual analysis
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-05
@@ -601,9 +601,16 @@ Manual smoke test confirms:
 All standard checks must also pass.
 
 ### Handoff
+Implemented SIMP-06 in `static/index.html`; no backend routes were changed.
 
-_Blocked by SIMP-05._
+- Removed the CSV control, export request/blob handling, dead success/loading CSS/helpers, and redundant custom font/control rules.
+- Added one shared JSON request helper, switched Reset Picks to one `DELETE /api/config/picks`, and retained per-week DELETE for manual unlock.
+- Renamed the control to Projected Pool End Week and added the horizon explanation; season options now derive from the current NFL season with January/February mapped to the prior season year.
+- Preserved all three algorithms, the 18-week grid, three-state team/week sorting and indicators, and added keyboard/screen-reader support through sortable headers and native grid buttons.
 
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, and `python -m compileall -q .` all pass. The focused static check passes JavaScript syntax, single-fetch-helper, no-CSV, selector, sorting, reset, and grid-accessibility assertions.
+
+Browser smoke via Chromium/CDP passed initial config/grid load, year reload, current-week persistence, all three algorithm suggestions, projected-end updates, team/week asc-desc-reset cycles, pick lock/unlock, one-request reset, and no console errors. Refresh completed with HTTP 200, schedule reload, and recommendations on the populated 2026 season in 41 seconds. A 2025 refresh exceeded a 55-second smoke timeout while upstream scraping; no frontend console error was observed.
 ---
 
 ## SIMP-07 — Prune and simplify the FastAPI application
