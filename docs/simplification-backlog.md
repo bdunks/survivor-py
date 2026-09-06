@@ -333,7 +333,7 @@ Checks: `mise install` installed Ruff `0.16.6`; `mise run lint`, `mise run forma
 
 ## SIMP-03 — Consolidate configuration and retire the CLI
 
-**Status:** blocked  
+**Status:** done
 **Model:** `openai-codex/gpt-5.6-luna`  
 **Effort:** `max`  
 **Depends on:** SIMP-02
@@ -391,7 +391,11 @@ Search tracked scripts, documentation, deployment configuration, and shell comma
 
 ### Handoff
 
-_Blocked by SIMP-02._
+Preflight searched tracked scripts, documentation, deployment configuration, and shell commands for `python main.py` and CLI flags. Matches were legacy README/CLAUDE documentation only; no external automation contract was identified.
+
+Added function-only `config_store.py` with canonical defaults, typed `Pick` updates, boundary validation, JSON compatibility/defaults, unknown-key preservation, deterministic week replacement, and atomic same-directory writes. Updated `app.py` to use it while retaining the existing routes and response fields; invalid API inputs remain 4xx responses. Deleted `main.py`, removed `termcolor`, refreshed `uv.lock`, and updated `config.example.json`. Updated SIMP-01 config imports/assertions without weakening intended assertions.
+
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test` (10 tests, 1 documented expected failure), `python -m compileall -q .`, and focused config/API smoke checks all passed. The graph was fully re-indexed with no skipped or parse-partial files. Legacy CLI references remain in README/CLAUDE for SIMP-08; no production references remain.
 
 ---
 

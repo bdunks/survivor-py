@@ -8,7 +8,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app as application
-from main import add_pick_to_config, load_config, update_current_week
+from config_store import (
+    load_config,
+    update_algorithm,
+    update_current_week,
+    update_pick,
+    update_split_week,
+)
 from models import EventOdds, Pick
 from optimizer import PickOptimizer
 
@@ -152,7 +158,7 @@ class OptimizerCharacterizationTests(unittest.TestCase):
                     patch.object(
                         application,
                         "load_config",
-                        return_value={"user_picks": []},
+                        return_value={"picks": []},
                     ),
                     patch.object(
                         application,
@@ -184,7 +190,7 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
     def test_defaults_and_malformed_input_are_isolated_from_repository_config(self):
         defaults = {
             "current_week": 1,
-            "user_picks": [],
+            "picks": [],
             "algorithm": "best-spread",
             "split_week": 10,
         }
@@ -194,6 +200,9 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
 
             config_path.write_text("{not json", encoding="utf-8")
             self.assertEqual(load_config(), defaults)
+
+            config_path.write_text(json.dumps({"current_week": 4}), encoding="utf-8")
+            self.assertEqual(load_config(), {**defaults, "current_week": 4})
 
             config_path.write_text(
                 json.dumps(
@@ -222,7 +231,7 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
             loaded = load_config()
 
             self.assertEqual(loaded["current_week"], 4)
-            self.assertEqual(loaded["user_picks"], [Pick("SEA", 1, 6.0)])
+            self.assertEqual(loaded["picks"], [Pick("SEA", 1, 6.0)])
             self.assertEqual(loaded["algorithm"], "back-to-front")
             self.assertEqual(loaded["split_week"], 14)
 
@@ -247,7 +256,7 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
 
         with temporary_config() as config_path:
             config_path.write_text(json.dumps(original), encoding="utf-8")
-            add_pick_to_config("BUF:5:7.5")
+            update_pick(Pick("BUF", 5, 7.5))
             saved = json.loads(config_path.read_text(encoding="utf-8"))
 
             self.assertEqual(
@@ -258,6 +267,30 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(saved["unrelated"], original["unrelated"])
+
+    def test_updates_validate_typed_values(self):
+        with temporary_config():
+            update_current_week(6)
+            update_algorithm("back-to-front")
+            update_split_week(14)
+            update_pick(Pick("SEA", 1, 6.0))
+
+            config = load_config()
+            self.assertEqual(config["current_week"], 6)
+            self.assertEqual(config["algorithm"], "back-to-front")
+            self.assertEqual(config["split_week"], 14)
+            self.assertEqual(config["picks"], [Pick("SEA", 1, 6.0)])
+
+            with self.assertRaises(ValueError):
+                update_current_week(0)
+            with self.assertRaises(ValueError):
+                update_split_week(19)
+            with self.assertRaises(ValueError):
+                update_algorithm("invalid")
+            with self.assertRaises(ValueError):
+                update_pick(Pick("X", 1, 1.0))
+            with self.assertRaises(ValueError):
+                update_pick(Pick("SEA", 19, 1.0))
 
 
 class EventOddsCharacterizationTests(unittest.TestCase):

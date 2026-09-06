@@ -1,10 +1,6 @@
 {
-  "current_week": 4,
-  "picks": [
-    { "team": "SEA", "week": 1, "spread": 6.0 },
-    { "team": "HOU", "week": 2, "spread": 6.5 },
-    { "team": "CLE", "week": 3, "spread": 6.5 }
-  ],
+  "current_week": 1,
+  "picks": [],
   "algorithm": "best-spread",
-  "split_week": 18
+  "split_week": 10
 }

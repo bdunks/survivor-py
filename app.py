@@ -18,12 +18,13 @@ from api_models import (
     StatusResponse,
     TeamListResponse,
 )
-from main import (
-    add_pick_to_config,
-    clear_pick_from_config,
+from config_store import clear_all_picks as clear_config_picks
+from config_store import clear_pick as clear_config_pick
+from config_store import (
     load_config,
     update_algorithm,
     update_current_week,
+    update_pick,
     update_split_week,
 )
 from models import EventOdds, Pick
@@ -118,8 +119,8 @@ async def get_config():
         config = load_config()
         return ConfigResponse(
             current_week=config["current_week"],
-            user_picks=[pick_to_response(pick) for pick in config["user_picks"]],
-            total_picks=len(config["user_picks"]),
+            user_picks=[pick_to_response(pick) for pick in config["picks"]],
+            total_picks=len(config["picks"]),
             algorithm=config["algorithm"],
             split_week=config["split_week"],
         )
@@ -138,6 +139,8 @@ async def update_week(week: int):
         return {"message": f"Updated current week to {week}", "week": week}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -157,6 +160,8 @@ async def update_config_algorithm(algorithm: str):
         return {"message": f"Updated algorithm to {algorithm}", "algorithm": algorithm}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -177,6 +182,8 @@ async def update_config_split_week(split_week: int):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -185,28 +192,26 @@ async def update_config_split_week(split_week: int):
 async def add_pick(pick_request: PickRequest):
     """Add or update a user pick"""
     try:
-        # Validate team
         if pick_request.team.upper() not in NFL_TEAMS:
             raise HTTPException(
                 status_code=400, detail=f"Invalid team: {pick_request.team}"
             )
 
-        # Format the pick string for the existing function
-        spread = pick_request.spread or 0.0
-        pick_string = f"{pick_request.team.upper()}:{pick_request.week}:{spread}"
-
-        add_pick_to_config(pick_string)
+        pick = Pick(
+            team=pick_request.team.upper(),
+            week=pick_request.week,
+            spread=pick_request.spread,
+        )
+        update_pick(pick)
 
         return {
             "message": f"Added pick for week {pick_request.week}",
-            "pick": pick_to_response(
-                Pick(
-                    team=pick_request.team.upper(),
-                    week=pick_request.week,
-                    spread=pick_request.spread,
-                )
-            ),
+            "pick": pick_to_response(pick),
         }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -218,8 +223,10 @@ async def clear_week_pick(week: int):
         if not (1 <= week <= 18):
             raise HTTPException(status_code=400, detail="Week must be between 1 and 18")
 
-        clear_pick_from_config(str(week))
+        clear_config_pick(week)
         return {"message": f"Cleared pick for week {week}", "week": week}
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -228,7 +235,7 @@ async def clear_week_pick(week: int):
 async def clear_all_picks():
     """Clear all user picks"""
     try:
-        clear_pick_from_config("all")
+        clear_config_picks()
         return {"message": "Cleared all picks"}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
@@ -297,7 +304,7 @@ async def optimize_picks(
 
         # Load configuration and events
         config = load_config()
-        user_picks = config["user_picks"]
+        user_picks = config["picks"]
 
         db_service = DatabaseService()
         events = db_service.fetch_odds_data(year)
@@ -346,6 +353,8 @@ async def optimize_picks(
 
         return OptimizationResponse(split_week=split_week, algorithms=algorithms)
 
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -367,7 +376,7 @@ async def optimize_single_algorithm(
             raise HTTPException(status_code=400, detail="Invalid algorithm")
 
         config = load_config()
-        user_picks = config["user_picks"]
+        user_picks = config["picks"]
 
         db_service = DatabaseService()
         events = db_service.fetch_odds_data(year)
@@ -397,6 +406,8 @@ async def optimize_single_algorithm(
             total_spread=sum(pick.spread or 0 for pick in picks),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -415,7 +426,7 @@ async def export_csv(
     """Export picks to CSV file"""
     try:
         config = load_config()
-        user_picks = config["user_picks"]
+        user_picks = config["picks"]
 
         db_service = DatabaseService()
         events = db_service.fetch_odds_data(year)
@@ -504,10 +515,12 @@ async def get_status():
 
         return StatusResponse(
             current_week=config["current_week"],
-            total_picks=len(config["user_picks"]),
+            total_picks=len(config["picks"]),
             database_events=len(events),
             last_refresh=None,  # Could be implemented with a timestamp file
         )
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
