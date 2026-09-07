@@ -842,15 +842,26 @@ def update_closing_line(
 ) -> bool:
     observed = _utc_timestamp(observed_at)
     kickoff = _utc_timestamp(kickoff_at)
-    if (
-        observed is None
-        or kickoff is None
-        or _timestamp_key(observed) >= _timestamp_key(kickoff)
-    ):
+    if observed is None or kickoff is None:
         return False
 
     with _connection(db_name) as connection:
         _setup_database(connection)
+        current = connection.execute(
+            "SELECT kickoff_at FROM current_game_state WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+        if current is None or current[0] is None:
+            return False
+        try:
+            actual_kickoff = _utc_timestamp(current[0])
+        except (TypeError, ValueError):
+            return False
+        if actual_kickoff is None or kickoff != actual_kickoff:
+            return False
+        if _timestamp_key(observed) >= _timestamp_key(actual_kickoff):
+            return False
+
         previous = connection.execute(
             "SELECT observed_at FROM closing_lines WHERE event_id = ?",
             (event_id,),
@@ -872,7 +883,7 @@ def update_closing_line(
                 kickoff_at = excluded.kickoff_at,
                 refresh_id = excluded.refresh_id
             """,
-            (event_id, season_year, week, spread, observed, kickoff, refresh_id),
+            (event_id, season_year, week, spread, observed, actual_kickoff, refresh_id),
         )
     return True
 

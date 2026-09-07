@@ -734,6 +734,7 @@ Do not implement a discovered follow-up in the same context unless the user expl
 **Limitations / deferred:**
 - Refresh history remains database-backed operational metadata rather than a separate history view; BACK-10 and BACK-11 remain untouched.
 ### BACK-10 — Validate closing-line kickoff timestamp against actual game kickoff
+**Status:** done
 
 **Evidence:** `update_closing_line` accepts `kickoff_at` as a parameter and guards pre-kickoff observations, but it does not validate that `kickoff_at` matches the event's actual scheduled kickoff from the current game state. A caller could pass an incorrect kickoff time and silently update a closing line post-kickoff.
 
@@ -744,6 +745,20 @@ Do not implement a discovered follow-up in the same context unless the user expl
 **Dependency:** BACK-03 (completed: closing-line updates exist).
 
 **Risk if deferred:** If CBS data returns incorrect kickoff times or the refresh logic has a bug, closing lines could be updated with post-kickoff spreads and silently accepted. Low risk: CBS kickoff times are generally reliable, and test fixtures use correct timestamps. Medium risk in production if kickoff time parsing ever regresses.
+
+### Handoff
+**Implementation:**
+- `update_closing_line` now no-ops unless the event exists in `current_game_state`, has a valid kickoff, and the supplied kickoff normalizes to that persisted kickoff. Pre-kickoff and newer-observation rules remain unchanged, and the persisted kickoff is used for the closing-line row.
+- `apply_refresh` continues to upsert current events before closing-line persistence, so valid refreshes retain their existing behavior while mismatched or missing kickoff data is rejected safely.
+- Added focused deterministic coverage for matching, mismatched, missing event/kickoff, equal and post-kickoff observations, newer valid observations, and the existing refresh/backtest paths.
+**Verification:**
+- `uv run python -m unittest -v test_backtesting test_backtest`: 33 tests pass.
+- `uv run python -m unittest discover -v`: 63 tests pass.
+- `mise run check`, `python -m compileall -q .`, and `git diff --check` pass.
+- Full codebase-memory index refreshed after implementation; changed-path coverage was checked and had no recorded issues.
+**Limitations / deferred:**
+- The persisted `current_game_state.kickoff_at` remains the authoritative local timestamp; independent provider cross-checking is outside BACK-10.
+- BACK-11 automation and all unrelated cleanup remain untouched.
 
 ### BACK-11 — Add automated end-of-season backtest run and comparison report
 

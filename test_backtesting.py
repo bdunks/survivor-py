@@ -314,33 +314,62 @@ class PointInTimeContractTests(unittest.TestCase):
 
         with temporary_database() as db_path:
             setup_database(db_path)
-            update_closing_line(
-                event_id=101,
-                spread=3.0,
+            sqlite_service.upsert_current_game(
+                GameEvent(
+                    event_id=101,
+                    season_year=2025,
+                    week=1,
+                    short_name="SEA @ DEN",
+                    spread=3.0,
+                    kickoff_at=KICKOFF,
+                ),
                 observed_at=REFRESH_ONE,
-                kickoff_at=KICKOFF,
                 db_name=db_path,
             )
-            update_closing_line(
-                event_id=101,
-                spread=4.0,
-                observed_at=REFRESH_ONE,
-                kickoff_at=KICKOFF,
-                db_name=db_path,
+            self.assertTrue(
+                update_closing_line(
+                    event_id=101,
+                    spread=3.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
             )
-            update_closing_line(
-                event_id=101,
-                spread=2.5,
-                observed_at=REFRESH_TWO,
-                kickoff_at=KICKOFF,
-                db_name=db_path,
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=4.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
             )
-            update_closing_line(
-                event_id=101,
-                spread=1.0,
-                observed_at=AFTER_KICKOFF,
-                kickoff_at=KICKOFF,
-                db_name=db_path,
+            self.assertTrue(
+                update_closing_line(
+                    event_id=101,
+                    spread=2.5,
+                    observed_at=REFRESH_TWO,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
+            )
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=1.5,
+                    observed_at=KICKOFF,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
+            )
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=1.0,
+                    observed_at=AFTER_KICKOFF,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
             )
 
             self.assertEqual(
@@ -350,6 +379,83 @@ class PointInTimeContractTests(unittest.TestCase):
                     (101,),
                 ),
                 [(2.5, REFRESH_TWO)],
+            )
+
+    def test_closing_line_requires_matching_persisted_kickoff(self):
+        update_closing_line = required_sqlite_function(
+            self, "update_closing_line", "BACK-10"
+        )
+
+        with temporary_database() as db_path:
+            setup_database(db_path)
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=3.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
+            )
+            sqlite_service.upsert_current_game(
+                GameEvent(
+                    event_id=101,
+                    season_year=2025,
+                    week=1,
+                    short_name="SEA @ DEN",
+                    spread=3.0,
+                    kickoff_at=None,
+                ),
+                observed_at=REFRESH_ONE,
+                db_name=db_path,
+            )
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=3.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
+            )
+            sqlite_service.upsert_current_game(
+                GameEvent(
+                    event_id=101,
+                    season_year=2025,
+                    week=1,
+                    short_name="SEA @ DEN",
+                    spread=3.0,
+                    kickoff_at=KICKOFF,
+                ),
+                observed_at=REFRESH_TWO,
+                db_name=db_path,
+            )
+            self.assertFalse(
+                update_closing_line(
+                    event_id=101,
+                    spread=2.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at="2025-09-03T13:00:00+00:00",
+                    db_name=db_path,
+                )
+            )
+            self.assertTrue(
+                update_closing_line(
+                    event_id=101,
+                    spread=3.0,
+                    observed_at=REFRESH_ONE,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                )
+            )
+            self.assertEqual(
+                database_rows(
+                    db_path,
+                    "SELECT spread, observed_at, kickoff_at "
+                    "FROM closing_lines WHERE event_id = ?",
+                    (101,),
+                ),
+                [(3.0, REFRESH_ONE, KICKOFF)],
             )
 
     def test_failed_refresh_preserves_current_state_and_closing_candidate(self):
@@ -753,7 +859,14 @@ class PointInTimeContractTests(unittest.TestCase):
 
             # A later refresh changes current state but cannot mutate the snapshot.
             events_updated = [
-                fixture_event(5001, 2025, 1, 5.5, "SEA", "DEN"),
+                GameEvent(
+                    event_id=5001,
+                    season_year=2025,
+                    week=1,
+                    short_name="SEA @ DEN",
+                    spread=5.5,
+                    kickoff_at=KICKOFF,
+                ),
                 fixture_event(5002, 2025, 2, 4.5, "KC", "BUF"),
                 fixture_event(5003, 2025, 3, 2.0, "MIA", "NYJ"),
             ]

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from backtest import run_backtest, write_csv, write_json
-from models import EventOdds
+from models import EventOdds, GameEvent
 from services.sqlite import (
     freeze_decision_snapshot,
     setup_database,
@@ -143,6 +143,18 @@ class BacktestTests(unittest.TestCase):
 
         # Add grading data
         upsert_game_result(201, "final", 27, 24, "2025-01-05T20:00:00Z", db_name=db)
+        upsert_current_game(
+            event=GameEvent(
+                event_id=201,
+                season_year=2025,
+                week=1,
+                short_name="KC @ BUF",
+                spread=-3.5,
+                kickoff_at="2025-01-05T17:30:00Z",
+            ),
+            observed_at="2025-01-05T10:00:00Z",
+            db_name=db,
+        )
         update_closing_line(
             201, -3.5, "2025-01-05T17:00:00Z", "2025-01-05T17:30:00Z", db
         )
@@ -273,6 +285,18 @@ class BacktestTests(unittest.TestCase):
         events = [EventOdds(801, 2025, 1, "KC @ BUF", 0.0)]
         _create_snapshot(db, 2025, 1, events)
         upsert_game_result(801, "final", 24, 24, "2025-01-05T20:00:00Z", db_name=db)
+        upsert_current_game(
+            event=GameEvent(
+                event_id=801,
+                season_year=2025,
+                week=1,
+                short_name="KC @ BUF",
+                spread=0.0,
+                kickoff_at="2025-01-05T17:30:00Z",
+            ),
+            observed_at="2025-01-05T10:00:00Z",
+            db_name=db,
+        )
         update_closing_line(
             801, 0.0, "2025-01-05T17:00:00Z", "2025-01-05T17:30:00Z", db
         )
