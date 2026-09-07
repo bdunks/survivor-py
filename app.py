@@ -10,18 +10,22 @@ from api_models import (
     PickRequest,
     PickResponse,
 )
-from config_store import clear_all_picks as clear_config_picks
-from config_store import clear_pick as clear_config_pick
 from config_store import (
     load_config,
     update_algorithm,
     update_current_week,
-    update_pick,
     update_split_week,
 )
 from models import Pick
 from optimizer import ALGORITHM_DISPATCH
-from services import apply_refresh, fetch_events, fetch_odds_data
+from services import (
+    append_pick_event,
+    apply_refresh,
+    clear_all_pick_events,
+    fetch_current_picks,
+    fetch_events,
+    fetch_odds_data,
+)
 
 app = FastAPI(
     title="NFL Survivor Pool Optimizer",
@@ -71,13 +75,14 @@ NFL_TEAMS = [
 
 
 @app.get("/api/config", response_model=ConfigResponse)
-def get_config():
+def get_config(year: int = Query(datetime.now().year, ge=2020, le=2030)):  # noqa: DTZ005
     """Get current configuration including week and user picks."""
     config = load_config()
+    picks = fetch_current_picks(year)
     return ConfigResponse(
         current_week=config["current_week"],
-        user_picks=config["picks"],
-        total_picks=len(config["picks"]),
+        user_picks=picks,
+        total_picks=len(picks),
         algorithm=config["algorithm"],
         split_week=config["split_week"],
     )
@@ -138,7 +143,13 @@ def add_pick(pick_request: PickRequest):
         spread=pick_request.spread,
     )
     try:
-        update_pick(pick)
+        append_pick_event(
+            season_year=pick_request.season_year,
+            week=pick_request.week,
+            action="set",
+            pick=pick,
+            recorded_at=datetime.now(UTC),
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {
@@ -148,21 +159,32 @@ def add_pick(pick_request: PickRequest):
 
 
 @app.delete("/api/config/picks/{week}")
-def clear_week_pick(week: int):
+def clear_week_pick(
+    week: int,
+    year: int = Query(datetime.now().year, ge=2020, le=2030),  # noqa: DTZ005
+):
     """Clear pick for specific week."""
     if not 1 <= week <= 18:
         raise HTTPException(status_code=400, detail="Week must be between 1 and 18")
     try:
-        clear_config_pick(week)
+        append_pick_event(
+            season_year=year,
+            week=week,
+            action="clear",
+            pick=None,
+            recorded_at=datetime.now(UTC),
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"message": f"Cleared pick for week {week}", "week": week}
 
 
 @app.delete("/api/config/picks")
-def clear_all_picks():
+def clear_all_picks(
+    year: int = Query(datetime.now().year, ge=2020, le=2030),  # noqa: DTZ005
+):
     """Clear all user picks."""
-    clear_config_picks()
+    clear_all_pick_events(year, datetime.now(UTC))
     return {"message": "Cleared all picks"}
 
 
@@ -261,14 +283,15 @@ def optimize_single_algorithm(
     if algorithm not in ALGORITHM_DISPATCH:
         raise HTTPException(status_code=400, detail="Invalid algorithm")
 
-    config = load_config()
+    load_config()
     events = fetch_odds_data(year)
+    picks = fetch_current_picks(year)
     algorithm_name, optimize = ALGORITHM_DISPATCH[algorithm]
-    picks = optimize(events, split_week, config["picks"])
+    results = optimize(events, split_week, picks)
     return OptimizationResult(
         algorithm=algorithm_name,
-        picks=picks,
-        total_spread=sum(pick.spread or 0 for pick in picks),
+        picks=results,
+        total_spread=sum(pick.spread or 0 for pick in results),
     )
 
 

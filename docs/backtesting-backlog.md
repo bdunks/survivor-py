@@ -366,7 +366,7 @@ Checks: `uv run python -m unittest -v test_services` passes (10 tests); `mise ru
 
 ## BACK-04 — Record season-aware pick history
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-03
 
 ### Goal
@@ -414,7 +414,9 @@ git diff --check
 
 ### Handoff
 
-Not started.
+Implemented season-specific pick event ledger with `fetch_current_picks(season_year)` and `clear_all_pick_events(season_year, recorded_at)` in `services/sqlite.py`. Updated `append_pick_event` to auto-create decision snapshots on first pick for a season/week by reading current game state (including legacy rows) within the same transaction. Added `season_year` field to `PickRequest` API model. Updated app routes to accept season via request body (POST) or query parameter (DELETE), derive current picks from events, and pass season to optimization. Frontend sends selected year for all pick operations. Removed `@unittest.expectedFailure` decorators from BACK-04-owned tests; BACK-04 snapshot/pick history tests now pass. Config picks remain in `config.json` but are no longer read by app routes; migration deferred (out of scope: no silent season guessing).
+
+Checks: `uv run python -m unittest -v test_core test_services` passes (23 tests); `mise run check` passes (35 tests, 1 expected failure owned by BACK-05); `python -m compileall -q .` passes; `git diff --check` passes.
 
 ---
 

@@ -995,6 +995,48 @@ def append_pick_event(
     spread = None if pick is None else pick.spread
     with _connection(db_name) as connection:
         _setup_database(connection)
+        if decision_snapshot_id is None:
+            existing = connection.execute(
+                """
+                SELECT snapshot_id
+                FROM decision_snapshots
+                WHERE season_year = ? AND survivor_week = ?
+                """,
+                (season_year, week),
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    """
+                    INSERT INTO decision_snapshots
+                        (season_year, survivor_week, decision_at, trigger)
+                    VALUES (?, ?, ?, 'pick')
+                    """,
+                    (season_year, week, _utc_timestamp(recorded_at)),
+                )
+                decision_snapshot_id = connection.execute(
+                    "SELECT last_insert_rowid()"
+                ).fetchone()[0]
+                rows = connection.execute(
+                    """
+                    SELECT event_id, season_year, week, home_team, away_team,
+                           short_name, spread, observed_at, refresh_id
+                    FROM current_game_state
+                    WHERE season_year = ?
+                    ORDER BY event_id
+                    """,
+                    (season_year,),
+                ).fetchall()
+                connection.executemany(
+                    """
+                    INSERT INTO decision_snapshot_games (
+                        snapshot_id, event_id, season_year, week, home_team,
+                        away_team, short_name, spread, observed_at, refresh_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ((decision_snapshot_id, *row) for row in rows),
+                )
+            else:
+                decision_snapshot_id = existing[0]
         connection.execute(
             """
             INSERT INTO pick_events (
@@ -1014,6 +1056,50 @@ def append_pick_event(
             ),
         )
         return connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def fetch_current_picks(
+    season_year: int, db_name: str | Path = DEFAULT_DB_NAME
+) -> list[Pick]:
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        rows = connection.execute(
+            """
+            WITH latest AS (
+                SELECT week, MAX(pick_event_id) AS max_id
+                FROM pick_events
+                WHERE season_year = ?
+                GROUP BY week
+            )
+            SELECT p.team, p.week, p.spread
+            FROM pick_events p
+            INNER JOIN latest l ON p.week = l.week AND p.pick_event_id = l.max_id
+            WHERE p.season_year = ? AND p.action = 'set'
+            ORDER BY p.week
+            """,
+            (season_year, season_year),
+        ).fetchall()
+    return [Pick(team=row[0], week=row[1], spread=row[2]) for row in rows]
+
+
+def clear_all_pick_events(
+    season_year: int,
+    recorded_at: Timestamp,
+    db_name: str | Path = DEFAULT_DB_NAME,
+) -> None:
+    current_picks = fetch_current_picks(season_year, db_name)
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        for pick in current_picks:
+            connection.execute(
+                """
+                INSERT INTO pick_events (
+                    season_year, week, action, team, spread, recorded_at,
+                    decision_snapshot_id, optimization_run_id
+                ) VALUES (?, ?, 'clear', NULL, NULL, ?, NULL, NULL)
+                """,
+                (season_year, pick.week, _utc_timestamp(recorded_at)),
+            )
 
 
 def _pick_to_json(pick: Pick) -> dict[str, object]:

@@ -112,7 +112,6 @@ class PointInTimeContractTests(unittest.TestCase):
                 0,
             )
 
-    @unittest.expectedFailure
     def test_first_pick_freezes_one_complete_snapshot_for_the_season_week(self):
         # Expected failure: BACK-04 owns first-pick snapshot creation and reuse.
         append_pick_event = required_sqlite_function(
@@ -176,7 +175,6 @@ class PointInTimeContractTests(unittest.TestCase):
                 ],
             )
 
-    @unittest.expectedFailure
     def test_replacement_and_clear_reuse_an_immutable_snapshot(self):
         # Expected failure: BACK-04 owns pick-event history and snapshot immutability.
         append_pick_event = required_sqlite_function(
@@ -394,7 +392,6 @@ class PointInTimeContractTests(unittest.TestCase):
                 [(3.0,)],
             )
 
-    @unittest.expectedFailure
     def test_pick_history_is_isolated_by_season(self):
         # Expected failure: BACK-04 owns season-aware pick events and reads.
         append_pick_event = required_sqlite_function(
@@ -433,7 +430,6 @@ class PointInTimeContractTests(unittest.TestCase):
                 fetch_current_picks(2025, db_name=db_path), [Pick("KC", 1, 4.5)]
             )
 
-    @unittest.expectedFailure
     def test_set_replacement_and_clear_reconstruct_pick_history(self):
         # Expected failure: BACK-04 owns event-ledger reconstruction.
         append_pick_event = required_sqlite_function(
@@ -478,7 +474,6 @@ class PointInTimeContractTests(unittest.TestCase):
             )
             self.assertEqual(fetch_current_picks(2025, db_name=db_path), [])
 
-    @unittest.expectedFailure
     def test_clear_all_appends_clear_events_for_active_weeks(self):
         # Expected failure: BACK-04 owns clear-all history reconstruction.
         append_pick_event = required_sqlite_function(

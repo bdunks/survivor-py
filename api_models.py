@@ -7,6 +7,7 @@ class PickRequest(BaseModel):
     )
     week: int = Field(..., ge=1, le=18, description="NFL week number")
     spread: float | None = Field(None, description="Point spread for the pick")
+    season_year: int = Field(..., ge=2020, le=2030, description="Season year")
 
 
 class PickResponse(BaseModel):

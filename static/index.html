@@ -299,8 +299,9 @@
       }
 
       async function fetchConfig() {
+        const year = parseInt(yearSelect.value);
         try {
-          return await request('/api/config');
+          return await request(`/api/config?year=${year}`);
         } catch (error) {
           showError(`Failed to load configuration: ${error.message}`);
           return null;
@@ -317,11 +318,12 @@
       }
 
       async function updatePick(team, week) {
+        const year = parseInt(yearSelect.value);
         try {
           return await request('/api/config/picks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ team, week, spread: null })
+            body: JSON.stringify({ team, week, spread: null, season_year: year })
           });
         } catch (error) {
           showError(`Failed to update pick: ${error.message}`);
@@ -330,8 +332,9 @@
       }
 
       async function clearPick(week) {
+        const year = parseInt(yearSelect.value);
         try {
-          return await request(`/api/config/picks/${week}`, { method: 'DELETE' });
+          return await request(`/api/config/picks/${week}?year=${year}`, { method: 'DELETE' });
         } catch (error) {
           showError(`Failed to clear pick: ${error.message}`);
           return null;
@@ -339,8 +342,9 @@
       }
 
       async function clearAllPicks() {
+        const year = parseInt(yearSelect.value);
         try {
-          return await request('/api/config/picks', { method: 'DELETE' });
+          return await request(`/api/config/picks?year=${year}`, { method: 'DELETE' });
         } catch (error) {
           showError(`Failed to reset picks: ${error.message}`);
           return null;
