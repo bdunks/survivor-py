@@ -762,6 +762,8 @@ Do not implement a discovered follow-up in the same context unless the user expl
 
 ### BACK-11 — Add automated end-of-season backtest run and comparison report
 
+**Status:** done
+
 **Evidence:** `backtest.py` exists and works, but users must manually run it for each algorithm after the season ends. There is no scripted workflow to run all four algorithms, compare their results, and generate a summary report.
 
 **Affected paths:** New script or Mise task wrapping `backtest.py` for all algorithms.
@@ -771,3 +773,25 @@ Do not implement a discovered follow-up in the same context unless the user expl
 **Dependency:** BACK-06 (completed: `backtest.py` works), BACK-07 (completed: backtest documented).
 
 **Risk if deferred:** Users must manually run four separate `backtest.py` invocations and manually compare JSON/CSV outputs. Low risk: the manual process is straightforward and documented. Medium risk if this becomes a shared tool where standardized comparison is expected.
+
+### Handoff
+
+**Implementation:**
+- Added `backtest_compare.py`, a stdlib-only wrapper that calls `run_backtest` once per stable `ALGORITHM_DISPATCH` slug with the same database, season, split week, and mode.
+- Added a deterministic JSON comparison contract containing report version, shared inputs, source revision, stable algorithm order, and every aggregate metric.
+- Added `test_backtest_compare.py` covering all four algorithms, shared options, report shape/metrics, byte stability, and strict failure propagation.
+- Documented the command and failure behavior in `README.md`.
+
+**Verification:**
+- `uv run python -m unittest -v test_backtest_compare`: 3 tests pass.
+- `uv run python -m unittest discover -v`: 66 tests pass.
+- `mise run check`: Ruff lint/format and all 66 tests pass.
+- `python -m compileall -q .`: passes.
+- `git diff --check`: passes.
+- `lsp_diagnostics`: ty reports 0 diagnostics for both new Python files.
+- CLI smoke run with an empty degraded database writes a four-result JSON report.
+- Full codebase-memory index and changed-path coverage are refreshed after implementation; final generation/counts and caveats are reported with completion.
+
+**Limitations / deferred:**
+- The comparison report is JSON summary output only; the existing single-algorithm runner remains the path for weekly detail or CSV output.
+- No parameter search, UI, provider, or algorithm changes were added.

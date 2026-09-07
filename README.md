@@ -101,6 +101,15 @@ A strict authoritative-snapshot backtest uses the immutable decision snapshot fo
 uv run python backtest.py --season 2025 --algorithm best-spread --mode strict --output results.json
 ```
 
+### Comparing all algorithms
+
+Run the end-of-season comparison wrapper to evaluate all four retained algorithms with identical inputs:
+
+```bash
+uv run python backtest_compare.py --db odds_data.db --season 2025 --split-week 18 --mode strict --output backtest-comparison-2025.json
+```
+
+The JSON report records the supplied inputs, source revision, stable dispatch-order algorithm list, and each algorithm's aggregate metrics. It has no mandatory generation timestamp, so identical inputs produce byte-stable output. The report is written only after all four runs succeed; strict failures exit nonzero without writing a new report, while degraded mode preserves the runner's explicit skipped-week behavior.
 **Modes:**
 
 - `strict` (default): requires a decision snapshot for every week; fails if any are missing.
