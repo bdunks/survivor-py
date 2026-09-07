@@ -39,6 +39,17 @@ def _timestamp_key(value: str) -> datetime:
     return datetime.fromisoformat(timestamp)
 
 
+def _ensure_columns(
+    connection: sqlite3.Connection,
+    table: str,
+    columns: Mapping[str, str],
+) -> None:
+    existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    for name, definition in columns.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 @contextmanager
 def _connection(db_name: str | Path = DEFAULT_DB_NAME) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_name)
@@ -72,10 +83,25 @@ def _setup_database(connection: sqlite3.Connection) -> None:
             refresh_id TEXT PRIMARY KEY,
             season_year INTEGER NOT NULL,
             requested_weeks TEXT NOT NULL,
+            source_urls TEXT NOT NULL DEFAULT '[]',
             started_at TEXT NOT NULL,
             finished_at TEXT,
             status TEXT NOT NULL,
             error TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS refresh_payloads (
+            refresh_id TEXT NOT NULL,
+            week INTEGER NOT NULL,
+            source_url TEXT NOT NULL,
+            payload BLOB NOT NULL,
+            error TEXT NOT NULL,
+            PRIMARY KEY (refresh_id, week),
+            FOREIGN KEY (refresh_id) REFERENCES refresh_runs(refresh_id)
+                ON DELETE CASCADE
         )
         """
     )
@@ -93,11 +119,28 @@ def _setup_database(connection: sqlite3.Connection) -> None:
             game_status TEXT,
             home_score INTEGER,
             away_score INTEGER,
+            home_moneyline INTEGER,
+            away_moneyline INTEGER,
+            total REAL,
             observed_at TEXT,
             refresh_id TEXT,
             is_legacy INTEGER NOT NULL DEFAULT 0 CHECK (is_legacy IN (0, 1))
         )
         """
+    )
+    _ensure_columns(
+        connection,
+        "refresh_runs",
+        {"source_urls": "TEXT NOT NULL DEFAULT '[]'"},
+    )
+    _ensure_columns(
+        connection,
+        "current_game_state",
+        {
+            "home_moneyline": "INTEGER",
+            "away_moneyline": "INTEGER",
+            "total": "REAL",
+        },
     )
     connection.execute(
         """
@@ -288,19 +331,7 @@ def save_odds_data(
 def fetch_odds_data(
     year: int, db_name: str | Path = DEFAULT_DB_NAME
 ) -> list[EventOdds]:
-    with _connection(db_name) as connection:
-        _setup_database(connection)
-        rows = connection.execute(
-            """
-            SELECT event_id, season_year, week, short_name, spread
-            FROM averaged_odds
-            WHERE season_year = ?
-            ORDER BY event_id
-            """,
-            (year,),
-        ).fetchall()
-
-    return _events_from_rows(rows)
+    return fetch_current_state(year, db_name)
 
 
 def _events_from_rows(rows: Iterable[tuple[Any, ...]]) -> list[EventOdds]:
@@ -327,18 +358,22 @@ def create_refresh_run(
     started_at: Timestamp,
     refresh_id: str | None = None,
     db_name: str | Path = DEFAULT_DB_NAME,
+    source_urls: Iterable[str] | None = None,
 ) -> str:
     run_id = refresh_id or uuid.uuid4().hex
-    requested = json.dumps(list(requested_weeks), separators=(",", ":"))
+    requested_values = list(requested_weeks)
+    source_values = list(source_urls or ())
+    requested = json.dumps(requested_values, separators=(",", ":"))
+    sources = json.dumps(source_values, separators=(",", ":"))
     with _connection(db_name) as connection:
         _setup_database(connection)
         connection.execute(
             """
             INSERT INTO refresh_runs
-                (refresh_id, season_year, requested_weeks, started_at, status)
-            VALUES (?, ?, ?, ?, 'running')
+                (refresh_id, season_year, requested_weeks, source_urls, started_at, status)
+            VALUES (?, ?, ?, ?, ?, 'running')
             """,
-            (run_id, season_year, requested, _utc_timestamp(started_at)),
+            (run_id, season_year, requested, sources, _utc_timestamp(started_at)),
         )
     return run_id
 
@@ -358,7 +393,12 @@ def finalize_refresh_run(
             SET finished_at = ?, status = ?, error = ?
             WHERE refresh_id = ?
             """,
-            (_utc_timestamp(finished_at), status, error, refresh_id),
+            (
+                _utc_timestamp(finished_at),
+                status,
+                None if error is None else str(error)[:1000],
+                refresh_id,
+            ),
         )
         if cursor.rowcount != 1:
             raise ValueError(f"Unknown refresh run: {refresh_id}")
@@ -366,6 +406,21 @@ def finalize_refresh_run(
 
 start_refresh_run = create_refresh_run
 finish_refresh_run = finalize_refresh_run
+
+
+def _event_value(event: EventOdds, name: str) -> object | None:
+    value = getattr(event, name, None)
+    return None if value == "" else value
+
+
+def _event_timestamp(event: EventOdds, name: str) -> str | None:
+    value = _event_value(event, name)
+    if value is None:
+        return None
+    try:
+        return _utc_timestamp(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _upsert_current_event(
@@ -395,15 +450,35 @@ def _upsert_current_event(
         """
         INSERT INTO current_game_state (
             event_id, season_year, week, home_team, away_team, short_name, spread,
-            observed_at, refresh_id, is_legacy
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            kickoff_at, game_status, home_score, away_score, home_moneyline,
+            away_moneyline, total, observed_at, refresh_id, is_legacy
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
             season_year = excluded.season_year,
             week = excluded.week,
             home_team = excluded.home_team,
             away_team = excluded.away_team,
             short_name = excluded.short_name,
-            spread = excluded.spread,
+            spread = COALESCE(excluded.spread, current_game_state.spread),
+            kickoff_at = COALESCE(
+                excluded.kickoff_at, current_game_state.kickoff_at
+            ),
+            game_status = COALESCE(
+                excluded.game_status, current_game_state.game_status
+            ),
+            home_score = COALESCE(
+                excluded.home_score, current_game_state.home_score
+            ),
+            away_score = COALESCE(
+                excluded.away_score, current_game_state.away_score
+            ),
+            home_moneyline = COALESCE(
+                excluded.home_moneyline, current_game_state.home_moneyline
+            ),
+            away_moneyline = COALESCE(
+                excluded.away_moneyline, current_game_state.away_moneyline
+            ),
+            total = COALESCE(excluded.total, current_game_state.total),
             observed_at = excluded.observed_at,
             refresh_id = excluded.refresh_id,
             is_legacy = excluded.is_legacy
@@ -416,6 +491,13 @@ def _upsert_current_event(
             event.away_team,
             event.short_name,
             event.spread,
+            _event_timestamp(event, "kickoff_at"),
+            _event_value(event, "game_status"),
+            _event_value(event, "home_score"),
+            _event_value(event, "away_score"),
+            _event_value(event, "home_moneyline"),
+            _event_value(event, "away_moneyline"),
+            _event_value(event, "total"),
             observed,
             refresh_id,
             is_legacy,
@@ -433,11 +515,12 @@ def save_current_state(
     events = list(data)
     with _connection(db_name) as connection:
         _setup_database(connection)
-        seasons: dict[int, set[int]] = {}
         for event in events:
-            seasons.setdefault(event.season_year, set()).add(event.event_id)
             _upsert_current_event(connection, event, observed_at, refresh_id)
         if observed_at is not None:
+            seasons: dict[int, set[int]] = {}
+            for event in events:
+                seasons.setdefault(event.season_year, set()).add(event.event_id)
             for season_year, event_ids in seasons.items():
                 event_ids = sorted(event_ids)
                 placeholders = ", ".join("?" for _ in event_ids)
@@ -474,6 +557,178 @@ def fetch_current_state(
             (year,),
         ).fetchall()
     return _events_from_rows(rows)
+
+
+def _finished_status(status: str) -> bool:
+    normalized = status.strip().lower()
+    return normalized.startswith("final") or normalized in {
+        "complete",
+        "completed",
+        "postponed",
+        "cancelled",
+        "canceled",
+    }
+
+
+def apply_refresh(
+    season_year: int,
+    events: Iterable[EventOdds],
+    observed_at: Timestamp,
+    status: str = "complete",
+    error: str | None = None,
+    db_name: str | Path = DEFAULT_DB_NAME,
+    *,
+    requested_weeks: Iterable[int] | None = None,
+    successful_weeks: Iterable[int] | None = None,
+    failed_weeks: Iterable[int] = (),
+    source_urls: Iterable[str] = (),
+    raw_failures: Iterable[Mapping[str, object]] = (),
+    started_at: Timestamp | None = None,
+    finished_at: Timestamp | None = None,
+) -> dict[str, object]:
+    all_events = list(events)
+    sources = list(source_urls)
+    requested = list(
+        requested_weeks
+        if requested_weeks is not None
+        else sorted({event.week for event in all_events})
+    )
+    failed = sorted(set(failed_weeks))
+    successful = sorted(
+        set(
+            successful_weeks
+            if successful_weeks is not None
+            else (event.week for event in all_events)
+        )
+        - set(failed)
+    )
+    refresh_status = status.lower()
+    if failed and refresh_status == "complete":
+        refresh_status = "partial" if successful else "failed"
+    if refresh_status == "failed":
+        successful = []
+        process_events: list[EventOdds] = []
+    else:
+        process_events = [event for event in all_events if event.week not in failed]
+    if refresh_status not in {"complete", "partial", "failed"}:
+        raise ValueError(f"Invalid refresh status: {status}")
+    if error is None and failed:
+        error = "failed weeks: " + ", ".join(str(week) for week in failed)
+    run_id = create_refresh_run(
+        season_year,
+        requested,
+        started_at or observed_at,
+        db_name=db_name,
+        source_urls=sources,
+    )
+    current_updates = 0
+    closing_updates = 0
+    result_updates = 0
+    try:
+        with _connection(db_name) as connection:
+            _setup_database(connection)
+            for event in process_events:
+                if _upsert_current_event(connection, event, observed_at, run_id):
+                    current_updates += 1
+
+        for event in process_events:
+            kickoff = _event_timestamp(event, "kickoff_at")
+            if (
+                event.spread is not None
+                and kickoff is not None
+                and update_closing_line(
+                    event.event_id,
+                    event.spread,
+                    observed_at,
+                    kickoff,
+                    db_name=db_name,
+                    season_year=event.season_year,
+                    week=event.week,
+                    refresh_id=run_id,
+                )
+            ):
+                closing_updates += 1
+
+            game_status = _event_value(event, "game_status")
+            if not isinstance(game_status, str) or not game_status.strip():
+                continue
+            home_score = _event_value(event, "home_score")
+            away_score = _event_value(event, "away_score")
+            if (
+                _finished_status(game_status)
+                or home_score is not None
+                or away_score is not None
+            ) and upsert_game_result(
+                event.event_id,
+                game_status,
+                home_score if isinstance(home_score, int) else None,
+                away_score if isinstance(away_score, int) else None,
+                observed_at,
+                db_name=db_name,
+                season_year=event.season_year,
+                week=event.week,
+            ):
+                result_updates += 1
+
+        with _connection(db_name) as connection:
+            _setup_database(connection)
+            for failure in raw_failures:
+                week = failure.get("week")
+                source_url = failure.get("source_url")
+                payload = failure.get("payload")
+                failure_error = failure.get("error")
+                if (
+                    isinstance(week, int)
+                    and isinstance(source_url, str)
+                    and isinstance(payload, bytes)
+                ):
+                    connection.execute(
+                        """
+                        INSERT OR REPLACE INTO refresh_payloads
+                            (refresh_id, week, source_url, payload, error)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            week,
+                            source_url,
+                            payload,
+                            str(failure_error or "parser failure")[:1000],
+                        ),
+                    )
+
+        finished = finished_at or observed_at
+        finalize_refresh_run(
+            run_id,
+            finished,
+            refresh_status,
+            error,
+            db_name,
+        )
+    except Exception as exception:
+        finalize_refresh_run(
+            run_id,
+            finished_at or observed_at,
+            "failed",
+            str(exception),
+            db_name,
+        )
+        raise
+
+    return {
+        "refresh_id": run_id,
+        "status": refresh_status,
+        "requested_weeks": requested,
+        "successful_weeks": successful,
+        "failed_weeks": failed,
+        "successful_count": len(successful),
+        "failed_count": len(failed),
+        "parsed_count": len(process_events),
+        "current_state_updates": current_updates,
+        "closing_line_updates": closing_updates,
+        "final_result_updates": result_updates,
+        "source_urls": sources,
+    }
 
 
 def freeze_decision_snapshot(
@@ -652,7 +907,12 @@ def upsert_game_result(
         ):
             return False
         if previous is not None and corrected is None:
-            corrected = previous[6]
+            changed = (
+                status != previous[2]
+                or home_score != previous[3]
+                or away_score != previous[4]
+            )
+            corrected = observed if changed else previous[6]
         connection.execute(
             """
             INSERT INTO game_results (

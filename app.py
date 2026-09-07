@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +21,7 @@ from config_store import (
 )
 from models import Pick
 from optimizer import ALGORITHM_DISPATCH
-from services import fetch_events, fetch_odds_data, save_odds_data
+from services import apply_refresh, fetch_events, fetch_odds_data
 
 app = FastAPI(
     title="NFL Survivor Pool Optimizer",
@@ -171,17 +171,71 @@ def clear_all_picks():
 
 @app.post("/api/data/refresh")
 def refresh_data(year: int = Query(..., ge=2020, le=2030)):
-    """Refresh odds data from CBS Sports."""
+    """Refresh current odds, closing lines, and completed game results."""
     config = load_config()
     current_week = config["current_week"]
-    events = fetch_events(year, starting_week=current_week)
-    save_odds_data(events)
-    return {
-        "message": f"Refreshed {len(events)} events for {year}",
-        "year": year,
-        "events_count": len(events),
-        "starting_week": current_week,
-    }
+    starting_week = max(1, current_week - 1)
+    requested_weeks = list(range(starting_week, 19))
+    source_urls = [
+        f"https://www.cbssports.com/nfl/scoreboard/{year}/regular/{week}/"
+        for week in requested_weeks
+    ]
+    started_at = datetime.now(UTC)
+    try:
+        events = fetch_events(year, starting_week=starting_week)
+    except Exception as error:
+        observed_at = datetime.now(UTC)
+        apply_refresh(
+            year,
+            [],
+            observed_at,
+            status="failed",
+            error=str(error),
+            requested_weeks=requested_weeks,
+            source_urls=source_urls,
+            started_at=started_at,
+            finished_at=observed_at,
+        )
+        raise
+
+    finished_at = datetime.now(UTC)
+    failed_weeks = list(getattr(events, "failed_weeks", ()))
+    successful_weeks = list(
+        getattr(
+            events,
+            "successful_weeks",
+            sorted({event.week for event in events} - set(failed_weeks)),
+        )
+    )
+    errors = list(getattr(events, "errors", ()))
+    status = (
+        "complete"
+        if not failed_weeks
+        else ("partial" if successful_weeks else "failed")
+    )
+    result = apply_refresh(
+        year,
+        events,
+        finished_at,
+        status=status,
+        error="; ".join(errors) or None,
+        requested_weeks=requested_weeks,
+        successful_weeks=successful_weeks,
+        failed_weeks=failed_weeks,
+        source_urls=list(getattr(events, "source_urls", source_urls)),
+        raw_failures=getattr(events, "raw_failures", ()),
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    result.update(
+        {
+            "message": f"Refreshed {result['parsed_count']} events for {year}",
+            "year": year,
+            "events_count": result["parsed_count"],
+            "starting_week": starting_week,
+        }
+    )
+    return result
 
 
 @app.get("/api/data/events", response_model=list[EventOddsResponse])

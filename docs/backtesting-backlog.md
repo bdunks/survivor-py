@@ -304,7 +304,7 @@ Checks: `uv run python -m unittest -v test_services` passes (7 tests); `mise run
 
 ## BACK-03 — Refresh current state, closing lines, and results
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-02
 
 ### Goal
@@ -358,7 +358,9 @@ git diff --check
 
 ### Handoff
 
-Not started.
+Implemented refresh-run metadata and bounded parser diagnostics, enriched CBS schedule/result parsing, and `apply_refresh` persistence for current state, pre-kickoff closing lines, and final results. Refresh now covers `max(1, current_week - 1)` through week 18, reports per-stage counts, and live reads use `current_game_state`; raw payloads are retained only for parser failures. Updated BACK-03 service and failed-refresh contract tests.
+
+Checks: `uv run python -m unittest -v test_services` passes (10 tests); `mise run check` passes twice (35 tests, 6 expected failures owned by BACK-04/BACK-05); both `python -m compileall -q .` runs pass; both `git diff --check` runs pass.
 
 ---
 

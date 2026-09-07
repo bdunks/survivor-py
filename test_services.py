@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 
 import app as application
 import services.sqlite as sqlite_service
-from models import EventOdds
-from services.cbssports import fetch_soup, parse_events
+from models import EventOdds, GameEvent
+from services.cbssports import fetch_events, fetch_soup, parse_events
 from services.sqlite import fetch_odds_data, save_odds_data, setup_database
 
 FIXTURE_HTML = """
@@ -30,6 +30,26 @@ FIXTURE_HTML = """
 </div>
 <div class="single-score-card" id="scorecard-107" data-abbrev="nfl_107_not a matchup">
   <td class="in-progress-odds-home">2.0</td>
+</div>
+"""
+
+RICH_FIXTURE_HTML = """
+<div class="single-score-card" id="scorecard-201"
+     data-abbrev="nfl_201_SEA @ DEN"
+     data-kickoff="2025-09-07T17:00:00Z"
+     data-status="Scheduled"
+     data-home-moneyline="-150"
+     data-away-moneyline="+130"
+     data-total="O 44.5">
+  <td class="in-progress-odds-home">-3.5</td>
+</div>
+<div class="single-score-card" id="scorecard-202"
+     data-abbrev="nfl_202_KC @ BUF"
+     data-kickoff="2025-09-08T00:20:00Z"
+     data-status="Final"
+     data-home-score="24"
+     data-away-score="17">
+  <td class="in-progress-odds-home">PK</td>
 </div>
 """
 
@@ -56,6 +76,36 @@ class ScraperTests(unittest.TestCase):
         )
         self.assertTrue(all(event.away_team != "UNK" for event in events))
         self.assertTrue(all(event.home_team != "UNK" for event in events))
+
+    def test_parser_keeps_schedule_and_final_metadata(self):
+        events = parse_events(RICH_FIXTURE_HTML, season_year=2025, week_number=1)
+        self.assertEqual(len(events), 2)
+        scheduled, final = events
+        self.assertEqual(scheduled.kickoff_at, "2025-09-07T17:00:00+00:00")
+        self.assertEqual(scheduled.game_status, "Scheduled")
+        self.assertEqual(scheduled.home_moneyline, -150)
+        self.assertEqual(scheduled.away_moneyline, 130)
+        self.assertEqual(scheduled.total, 44.5)
+        self.assertIsNone(scheduled.home_score)
+        self.assertEqual(final.spread, 0.0)
+        self.assertEqual(final.game_status, "Final")
+        self.assertEqual((final.home_score, final.away_score), (24, 17))
+
+    def test_fetch_events_reports_parser_failures(self):
+        soup = Mock()
+        soup._raw_content = b"parser fixture"
+        with (
+            patch("services.cbssports.fetch_soup", return_value=soup),
+            patch(
+                "services.cbssports.parse_events",
+                side_effect=ValueError("parser changed"),
+            ),
+        ):
+            result = fetch_events(2025, starting_week=18)
+
+        self.assertEqual(result.successful_weeks, [])
+        self.assertEqual(result.failed_weeks, [18])
+        self.assertEqual(result.raw_failures[0]["payload"], b"parser fixture")
 
     def test_fetch_soup_uses_timeout_and_checks_http_status(self):
         response = Mock(content=FIXTURE_HTML.encode())
@@ -245,6 +295,90 @@ class DatabaseTests(unittest.TestCase):
                 [(event.event_id, event.spread) for event in original],
             )
 
+    def test_partial_refresh_preserves_failed_week_and_updates_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "refresh.db"
+            kickoff = "2025-09-10T12:00:00+00:00"
+            first = GameEvent(
+                event_id=1,
+                season_year=2025,
+                week=1,
+                short_name="SEA @ DEN",
+                spread=-3.0,
+                kickoff_at=kickoff,
+                game_status="Scheduled",
+            )
+            second = GameEvent(
+                event_id=2,
+                season_year=2025,
+                week=2,
+                short_name="KC @ BUF",
+                spread=-2.5,
+                kickoff_at=kickoff,
+                game_status="Final",
+                home_score=24,
+                away_score=17,
+            )
+            sqlite_service.apply_refresh(
+                2025,
+                [first, second],
+                "2025-09-09T12:00:00+00:00",
+                status="partial",
+                requested_weeks=[1, 2],
+                successful_weeks=[1, 2],
+                db_name=db_path,
+            )
+            failed_week = GameEvent(
+                event_id=1,
+                season_year=2025,
+                week=1,
+                short_name="SEA @ DEN",
+                spread=9.0,
+                kickoff_at=kickoff,
+                game_status="Final",
+                home_score=7,
+                away_score=31,
+            )
+            result = sqlite_service.apply_refresh(
+                2025,
+                [failed_week, second],
+                "2025-09-09T13:00:00+00:00",
+                status="partial",
+                requested_weeks=[1, 2],
+                successful_weeks=[2],
+                failed_weeks=[1],
+                error="week 1 failed",
+                source_urls=["https://example.test/week-1"],
+                db_name=db_path,
+            )
+            self.assertEqual(result["failed_weeks"], [1])
+            with closing(sqlite3.connect(db_path)) as connection:
+                refresh = connection.execute(
+                    "SELECT source_urls, status, error FROM refresh_runs "
+                    "ORDER BY rowid DESC LIMIT 1"
+                ).fetchone()
+            self.assertEqual(refresh[0], '["https://example.test/week-1"]')
+            self.assertEqual(refresh[1], "partial")
+            self.assertEqual(refresh[2], "week 1 failed")
+            self.assertEqual(
+                [
+                    (event.event_id, event.spread)
+                    for event in sqlite_service.fetch_current_state(2025, db_path)
+                ],
+                [(1, -3.0), (2, -2.5)],
+            )
+            game_result = sqlite_service.fetch_game_result(2, db_path)
+            assert game_result is not None
+            self.assertEqual(game_result["home_score"], 24)
+            self.assertIsNone(sqlite_service.fetch_game_result(1, db_path))
+            with closing(sqlite3.connect(db_path)) as connection:
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT count(*) FROM decision_snapshots"
+                    ).fetchone()[0],
+                    0,
+                )
+
 
 class AppDataFlowTests(unittest.TestCase):
     def test_refresh_and_events_use_functional_services(self):
@@ -252,12 +386,18 @@ class AppDataFlowTests(unittest.TestCase):
         with (
             patch.object(application, "load_config", return_value={"current_week": 4}),
             patch.object(application, "fetch_events", return_value=[event]) as fetch,
-            patch.object(application, "save_odds_data") as save,
+            patch.object(
+                application,
+                "apply_refresh",
+                return_value={"parsed_count": 1},
+            ) as apply,
         ):
             refresh_result = application.refresh_data(2025)
 
-        fetch.assert_called_once_with(2025, starting_week=4)
-        save.assert_called_once_with([event])
+        fetch.assert_called_once_with(2025, starting_week=3)
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args.args[:2], (2025, [event]))
+        self.assertEqual(apply.call_args.kwargs["requested_weeks"], list(range(3, 19)))
         self.assertEqual(refresh_result["events_count"], 1)
 
         with patch.object(

@@ -1,6 +1,7 @@
 from .cbssports import fetch_events, fetch_soup, parse_events
 from .sqlite import (
     append_pick_event,
+    apply_refresh,
     create_refresh_run,
     fetch_current_state,
     fetch_decision_snapshot,
@@ -24,6 +25,7 @@ from .sqlite import (
 
 __all__ = [
     "append_pick_event",
+    "apply_refresh",
     "create_refresh_run",
     "fetch_current_state",
     "fetch_decision_snapshot",

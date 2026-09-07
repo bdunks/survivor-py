@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import app as application
 import services.sqlite as sqlite_service
-from models import EventOdds, Pick
+from models import EventOdds, GameEvent, Pick
 from optimizer import ALGORITHM_DISPATCH
 from services.sqlite import save_odds_data, setup_database
 
@@ -284,12 +284,13 @@ class PointInTimeContractTests(unittest.TestCase):
             patch.object(
                 application, "fetch_events", side_effect=RuntimeError("fixture failure")
             ),
-            patch.object(application, "save_odds_data") as save,
+            patch.object(application, "apply_refresh") as apply,
             self.assertRaisesRegex(RuntimeError, "fixture failure"),
         ):
             application.refresh_data(2025)
 
-        save.assert_not_called()
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args.kwargs["status"], "failed")
 
     def test_closing_line_accepts_newer_pre_kickoff_observations_only(self):
         """BACK-02 owns closing-line observation rules."""
@@ -337,16 +338,23 @@ class PointInTimeContractTests(unittest.TestCase):
                 [(2.5, REFRESH_TWO)],
             )
 
-    @unittest.expectedFailure
     def test_failed_refresh_preserves_current_state_and_closing_candidate(self):
-        # Expected failure: BACK-03 owns failed-refresh transaction behavior.
         apply_refresh = required_sqlite_function(self, "apply_refresh", "BACK-03")
 
         with temporary_database() as db_path:
             setup_database(db_path)
             apply_refresh(
                 season_year=2025,
-                events=[fixture_event(101, 2025, 1, 3.0, "SEA", "DEN")],
+                events=[
+                    GameEvent(
+                        event_id=101,
+                        season_year=2025,
+                        week=1,
+                        short_name="SEA @ DEN",
+                        spread=3.0,
+                        kickoff_at=KICKOFF,
+                    )
+                ],
                 observed_at=REFRESH_ONE,
                 status="complete",
                 db_name=db_path,
@@ -354,7 +362,14 @@ class PointInTimeContractTests(unittest.TestCase):
             apply_refresh(
                 season_year=2025,
                 events=[
-                    fixture_event(101, 2025, 1, 9.0, "SEA", "DEN"),
+                    GameEvent(
+                        event_id=101,
+                        season_year=2025,
+                        week=1,
+                        short_name="SEA @ DEN",
+                        spread=9.0,
+                        kickoff_at=KICKOFF,
+                    )
                 ],
                 observed_at=REFRESH_TWO,
                 status="failed",
