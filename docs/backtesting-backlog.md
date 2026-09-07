@@ -497,7 +497,7 @@ git diff --check
 
 ## BACK-06 — Implement the sequential backtest runner
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-05
 
 ### Goal
@@ -565,8 +565,22 @@ git diff --check
 
 ### Handoff
 
-Not started.
+**Implementation:**
+- Added `backtest.py` with stdlib-only `argparse` entry point, strict/degraded modes, and deterministic JSON/CSV output.
+- Strict mode rejects missing or empty required weekly snapshots; degraded mode is explicit and skips unavailable weeks without substituting current state.
+- The runner uses immutable snapshot events as optimizer input, preserves prior simulated pick weeks/spreads, and marks post-elimination recommendations as counterfactual.
+- Grading reads final results and closing lines separately, reports win/loss/tie/postponed/cancelled/ungraded outcomes, and computes the required aggregate metrics.
+- Weekly and aggregate output include source revision metadata, deterministic parameters, snapshot provenance, and stable ordering.
 
+**Testing:**
+- Added `test_backtest.py` with 18 deterministic tests covering snapshot immutability, strict/degraded missing data, repeatability, pick locking, provenance, counterfactuals, grading, and JSON/CSV output.
+
+**Verification:**
+- `uv run python -m unittest -v test_backtest`: 18 tests pass.
+- `mise run check`: lint, format, and all 53 tests pass.
+- `python -m compileall -q .`: passes.
+- `git diff --check`: passes.
+- Worktree is clean and the amended `BACK-06:` commit is the single commit after BACK-05.
 ---
 
 ## BACK-07 — End-to-end audit, backup, and operating documentation
