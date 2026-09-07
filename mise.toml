@@ -9,16 +9,17 @@ python.uv_venv_auto = true
 run = "uv run uvicorn app:app --reload --host 127.0.0.1 --port 8000"
 
 [tasks.lint]
-run = "ruff check ."
+run = "ruff check --fix --unsafe-fixes ."
 
 [tasks.format]
 run = "ruff format ."
-
-[tasks.format-check]
-run = "ruff format --check ."
 
 [tasks.test]
 run = "uv run python -m unittest discover -v"
 
 [tasks.check]
-depends = ["lint", "format-check", "test"]
+run = [
+  "mise run lint",
+  "mise run format",
+  "mise run test",
+]

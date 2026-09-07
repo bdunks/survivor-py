@@ -12,17 +12,13 @@ uv sync --locked
 mise run dev
 ```
 
-The development server runs at <http://127.0.0.1:8000/>. Use these checks before committing:
+The development server runs at <http://127.0.0.1:8000/>. Before committing, run:
 
 ```bash
-mise run lint
-mise run format-check
-mise run test
 mise run check
-python -m compileall -q .
 ```
 
-`mise run format` applies Ruff formatting. `mise run check` composes linting, formatting checks, and the standard-library test suite. The `dev` task runs `uv run uvicorn app:app --reload --host 127.0.0.1 --port 8000`.
+`mise run check` runs `ruff check --fix --unsafe-fixes .`, `ruff format .`, and the standard-library tests in order. Ruff's unsafe fixes are assumed safe; only issues remaining after autofix need manual attention. The individual `lint`, `format`, and `test` tasks are available when needed. The `dev` task runs `uv run uvicorn app:app --reload --host 127.0.0.1 --port 8000`.
 
 ## Architecture
 

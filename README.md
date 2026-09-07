@@ -63,12 +63,10 @@ Refreshing requires network access and depends on CBS Sports' HTML structure. Ga
 
 ## Development checks
 
+Before committing, run:
+
 ```bash
-mise run lint
-mise run format-check
-mise run test
 mise run check
-python -m compileall -q .
 ```
 
-Use `mise run format` to apply Ruff formatting. `mise run check` runs the lint, formatting, and test checks together.
+This runs `ruff check --fix --unsafe-fixes .`, `ruff format .`, and the standard-library tests in order. Ruff's unsafe fixes are assumed safe; only issues remaining after autofix need manual attention. Run `mise run lint`, `mise run format`, or `mise run test` individually when needed.
