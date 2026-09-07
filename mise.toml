@@ -1,5 +1,25 @@
 [tools]
 uv = "latest"
+ruff = "0.16.6"
 
 [settings]
 python.uv_venv_auto = true
+
+[tasks.dev]
+run = "uv run uvicorn app:app --reload --host 127.0.0.1 --port 8000"
+
+[tasks.lint]
+run = "ruff check --fix --unsafe-fixes ."
+
+[tasks.format]
+run = "ruff format ."
+
+[tasks.test]
+run = "uv run python -m unittest discover -v"
+
+[tasks.check]
+run = [
+  "mise run lint",
+  "mise run format",
+  "mise run test",
+]

@@ -55,6 +55,11 @@
       min-height: auto;
     }
 
+    .controls-container input:not([type="range"]) {
+      height: auto;
+    }
+
+
     .survivor-grid-container {
       overflow-x: auto;
     }
@@ -104,9 +109,20 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
       cursor: pointer;
       transition: background-color 0.2s;
       font-size: 0.75em;
+    }
+
+    .grid-cell:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
     }
 
     .grid-cell:hover {
@@ -157,27 +173,18 @@
       pointer-events: none;
     }
 
-    /* Loading states */
-    .loading {
-      opacity: 0.6;
-    }
-
-    /* Export button positioning */
-    .export-controls {
-      text-align: right;
-      margin-bottom: 0.25rem;
-    }
-
-    .export-controls button {
-      font-size: 0.75rem;
-      padding: 0.3rem 0.6rem;
-    }
 
     /* Sortable column headers */
     .sortable {
       cursor: pointer;
       user-select: none;
       position: relative;
+      display: table-cell;
+    }
+
+    .sortable:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
     }
 
     .sortable:hover {
@@ -212,12 +219,7 @@
     <article class="controls-container">
       <div>
         <label for="yearSelect">Season Year</label>
-        <select id="yearSelect">
-          <option value="2026">2026</option>
-          <option value="2025">2025</option>
-          <option value="2024">2024</option>
-          <option value="2023">2023</option>
-        </select>
+        <select id="yearSelect"></select>
       </div>
       <div>
         <label for="currentWeekInput">Current Week</label>
@@ -232,7 +234,7 @@
         </select>
       </div>
       <div>
-        <label for="splitWeekSlider">Split Week: <span id="splitWeekValue">10</span></label>
+        <label for="splitWeekSlider">Projected Pool End Week: <span id="splitWeekValue">10</span></label>
         <input type="range" min="1" max="18" value="10" id="splitWeekSlider">
       </div>
       <div>
@@ -241,9 +243,6 @@
       </div>
     </article>
 
-    <div class="export-controls">
-      <button id="exportCsvBtn" class="outline">Export to CSV</button>
-    </div>
 
     <div class="survivor-grid-container">
       <table class="survivor-grid" id="survivorGrid">
@@ -264,7 +263,6 @@
       const refreshDataBtn = document.getElementById('refreshDataBtn');
       const resetBtn = document.getElementById('resetBtn');
       const yearSelect = document.getElementById('yearSelect');
-      const exportCsvBtn = document.getElementById('exportCsvBtn');
       const currentWeekInput = document.getElementById('currentWeekInput');
 
       // --- CONSTANTS & STATE ---
@@ -272,16 +270,36 @@
       const WEEKS = 18;
 
       let scheduleData = {}; // To hold the full season schedule
-      let userPicks = {}; // { week: team, ... }
       let currentConfig = null;
       let sortState = { column: null, direction: null }; // Track current sort state
 
+      function getCurrentNflSeason(date = new Date()) {
+        const year = date.getFullYear();
+        return date.getMonth() <= 1 ? year - 1 : year;
+      }
+
+      function populateYearOptions() {
+        const season = getCurrentNflSeason();
+        yearSelect.innerHTML = Array.from({ length: 4 }, (_, index) => {
+          const year = season - index;
+          return `<option value="${year}">${year}</option>`;
+        }).join('');
+      }
       // --- API FUNCTIONS ---
+      async function request(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            data?.detail || data?.error || `HTTP ${response.status}: ${response.statusText}`
+          );
+        }
+        return data;
+      }
+
       async function fetchConfig() {
         try {
-          const response = await fetch('/api/config');
-          if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          return await response.json();
+          return await request('/api/config');
         } catch (error) {
           showError(`Failed to load configuration: ${error.message}`);
           return null;
@@ -290,9 +308,7 @@
 
       async function fetchEvents(year) {
         try {
-          const response = await fetch(`/api/data/events?year=${year}`);
-          if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          return await response.json();
+          return await request(`/api/data/events?year=${year}`);
         } catch (error) {
           showError(`Failed to load events: ${error.message}`);
           return [];
@@ -301,23 +317,11 @@
 
       async function updatePick(team, week) {
         try {
-          const response = await fetch('/api/config/picks', {
+          return await request('/api/config/picks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              team: team,
-              week: week,
-              spread: null
-            })
+            body: JSON.stringify({ team, week, spread: null })
           });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to update pick');
-          }
-
-          showSuccess(`Added pick: ${team} for week ${week}`);
-          return await response.json();
         } catch (error) {
           showError(`Failed to update pick: ${error.message}`);
           return null;
@@ -326,19 +330,18 @@
 
       async function clearPick(week) {
         try {
-          const response = await fetch(`/api/config/picks/${week}`, {
-            method: 'DELETE'
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to clear pick');
-          }
-
-          showSuccess(`Cleared pick for week ${week}`);
-          return await response.json();
+          return await request(`/api/config/picks/${week}`, { method: 'DELETE' });
         } catch (error) {
           showError(`Failed to clear pick: ${error.message}`);
+          return null;
+        }
+      }
+
+      async function clearAllPicks() {
+        try {
+          return await request('/api/config/picks', { method: 'DELETE' });
+        } catch (error) {
+          showError(`Failed to reset picks: ${error.message}`);
           return null;
         }
       }
@@ -348,24 +351,10 @@
         try {
           refreshDataBtn.setAttribute('aria-busy', 'true');
           refreshDataBtn.textContent = 'Refreshing...';
+          await request(`/api/data/refresh?year=${year}`, { method: 'POST' });
 
-          const response = await fetch(`/api/data/refresh?year=${year}`, {
-            method: 'POST'
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to refresh data');
-          }
-
-          const result = await response.json();
-          showSuccess(`Refreshed ${result.events_count} events for ${result.year}`);
-
-          // Refresh schedule data and grid after data update
           await loadScheduleData();
           renderGrid();
-          await runOptimization();
-
         } catch (error) {
           showError(`Failed to refresh data: ${error.message}`);
         } finally {
@@ -377,69 +366,16 @@
       async function getOptimization(splitWeek, algorithm) {
         const year = parseInt(yearSelect.value);
         try {
-          const response = await fetch(`/api/optimize/${splitWeek}/${algorithm}?year=${year}`);
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to get optimization');
-          }
-          return await response.json();
+          return await request(`/api/optimize/${splitWeek}/${algorithm}?year=${year}`);
         } catch (error) {
           showError(`Failed to get optimization: ${error.message}`);
           return null;
         }
       }
 
-      async function exportToCsv() {
-        const splitWeek = parseInt(splitWeekSlider.value);
-        const year = parseInt(yearSelect.value);
-        const algorithm = algorithmSelect.value;
-
-        try {
-          exportCsvBtn.setAttribute('aria-busy', 'true');
-          exportCsvBtn.textContent = 'Exporting...';
-
-          const response = await fetch(`/api/export/csv?split_week=${splitWeek}&algorithm=${algorithm}&year=${year}`);
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to export CSV');
-          }
-
-          // Create download
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.style.display = 'none';
-          a.href = url;
-          a.download = `survivor_picks_${year}_week${splitWeek}_${algorithm}.csv`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-
-          showSuccess('CSV file downloaded successfully');
-
-        } catch (error) {
-          showError(`Failed to export CSV: ${error.message}`);
-        } finally {
-          exportCsvBtn.setAttribute('aria-busy', 'false');
-          exportCsvBtn.textContent = 'Export to CSV';
-        }
-      }
-
       async function updateCurrentWeek(week) {
         try {
-          const response = await fetch(`/api/config/week/${week}`, {
-            method: 'PUT'
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to update current week');
-          }
-
-          showSuccess(`Updated current week to ${week}`);
-          return await response.json();
+          return await request(`/api/config/week/${week}`, { method: 'PUT' });
         } catch (error) {
           showError(`Failed to update current week: ${error.message}`);
           return null;
@@ -448,16 +384,10 @@
 
       async function updateAlgorithm(algorithm) {
         try {
-          const response = await fetch(`/api/config/algorithm?algorithm=${encodeURIComponent(algorithm)}`, {
-            method: 'PUT'
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to update algorithm');
-          }
-
-          return await response.json();
+          return await request(
+            `/api/config/algorithm?algorithm=${encodeURIComponent(algorithm)}`,
+            { method: 'PUT' }
+          );
         } catch (error) {
           showError(`Failed to update algorithm: ${error.message}`);
           return null;
@@ -466,18 +396,9 @@
 
       async function updateSplitWeek(splitWeek) {
         try {
-          const response = await fetch(`/api/config/split-week?split_week=${splitWeek}`, {
-            method: 'PUT'
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to update split week');
-          }
-
-          return await response.json();
+          return await request(`/api/config/split-week?split_week=${splitWeek}`, { method: 'PUT' });
         } catch (error) {
-          showError(`Failed to update split week: ${error.message}`);
+          showError(`Failed to update projected pool end week: ${error.message}`);
           return null;
         }
       }
@@ -486,10 +407,6 @@
       function showError(message) {
         console.error(message);
         alert(`Error: ${message}`);
-      }
-
-      function showSuccess(message) {
-        console.log(message);
       }
 
       // --- SORTING FUNCTIONS ---
@@ -544,16 +461,19 @@
       }
 
       function updateSortHeaders() {
-        // Remove all sort classes
         document.querySelectorAll('.sortable').forEach(header => {
           header.classList.remove('sort-asc', 'sort-desc');
+          header.setAttribute('aria-sort', 'none');
         });
 
-        // Add current sort class
         if (sortState.column && sortState.direction) {
           const activeHeader = document.querySelector(`.sortable[data-column="${sortState.column}"]`);
           if (activeHeader) {
             activeHeader.classList.add(`sort-${sortState.direction}`);
+            activeHeader.setAttribute(
+              'aria-sort',
+              sortState.direction === 'asc' ? 'ascending' : 'descending'
+            );
           }
         }
       }
@@ -599,9 +519,9 @@
       // --- GRID RENDERING ---
       function renderGrid() {
         // Header
-        let headerHtml = '<tr><th class="sortable" data-column="team">Team</th>';
+        let headerHtml = '<tr><th class="sortable" data-column="team" tabindex="0" role="button" aria-sort="none" aria-label="Sort by team">Team</th>';
         for (let i = 1; i <= WEEKS; i++) {
-          headerHtml += `<th class="sortable" data-column="${i}">Week ${i}</th>`;
+          headerHtml += `<th class="sortable" data-column="${i}" tabindex="0" role="button" aria-sort="none" aria-label="Sort by week ${i}">Week ${i}</th>`;
         }
         headerHtml += '</tr>';
         survivorGridHead.innerHTML = headerHtml;
@@ -622,20 +542,20 @@
               const spreadDisplay = game.spread > 0 ? `+${game.spread.toFixed(1)}` : game.spread.toFixed(1);
               bodyHtml += `
                 <td data-team="${team}" data-week="${week}">
-                  <div class="grid-cell">
+                  <button type="button" class="grid-cell" aria-label="${team}, week ${week}: ${game.opponent}, spread ${spreadDisplay}">
                     <span class="opponent">${game.opponent}</span>
                     <span class="spread">${spreadDisplay}</span>
-                  </div>
+                  </button>
                 </td>`;
             } else {
-              bodyHtml += `<td><div class="grid-cell bye-week">BYE</div></td>`;
+              bodyHtml += `<td><button type="button" class="grid-cell bye-week" disabled aria-label="${team}, week ${week}: bye">BYE</button></td>`;
             }
           }
           bodyHtml += '</tr>';
         });
         survivorGridBody.innerHTML = bodyHtml;
 
-        // Add header click listeners and update sort indicators
+        // Add header listeners and update sort indicators
         addHeaderEventListeners();
         updateSortHeaders();
         addGridEventListeners();
@@ -656,7 +576,6 @@
           });
         }
 
-        userPicks = weekToTeam;
 
         // Update grid cell states
         document.querySelectorAll('.grid-cell').forEach(cell => {
@@ -665,12 +584,16 @@
           cell.classList.remove('user-pick', 'disabled', 'suggested-pick');
           const week = parseInt(cell.parentElement.dataset.week);
           const team = cell.parentElement.dataset.team;
+          const isPicked = weekToTeam[week] === team;
+          const isDisabled = !isPicked && (pickedTeams.has(team) || pickedWeeks.has(week));
 
-          if (weekToTeam[week] === team) {
+          if (isPicked) {
             cell.classList.add('user-pick');
-          } else if (pickedTeams.has(team) || pickedWeeks.has(week)) {
+          } else if (isDisabled) {
             cell.classList.add('disabled');
           }
+          cell.setAttribute('aria-pressed', isPicked ? 'true' : 'false');
+          cell.setAttribute('aria-disabled', isDisabled ? 'true' : 'false');
         });
 
         runOptimization();
@@ -737,9 +660,12 @@
 
       function addHeaderEventListeners() {
         document.querySelectorAll('.sortable').forEach(header => {
-          header.addEventListener('click', (e) => {
-            const column = e.target.dataset.column;
-            handleColumnSort(column);
+          header.addEventListener('click', () => handleColumnSort(header.dataset.column));
+          header.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleColumnSort(header.dataset.column);
+            }
           });
         });
       }
@@ -772,23 +698,18 @@
       });
 
       resetBtn.addEventListener('click', async () => {
-        if (confirm('Are you sure you want to reset all picks?')) {
-          // Clear all picks
-          const picks = Object.keys(userPicks);
-          for (const week of picks) {
-            await clearPick(parseInt(week));
-          }
+        if (confirm('Are you sure you want to reset all picks?') && await clearAllPicks()) {
           currentConfig = await fetchConfig();
           updateGridState();
         }
       });
 
       refreshDataBtn.addEventListener('click', refreshData);
-      exportCsvBtn.addEventListener('click', exportToCsv);
 
       // --- INITIALIZATION ---
       async function init() {
         try {
+          populateYearOptions();
           // Load current configuration
           currentConfig = await fetchConfig();
 
