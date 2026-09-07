@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import app as application
 import services.sqlite as sqlite_service
 from models import EventOdds, GameEvent
-from services.cbssports import fetch_events, fetch_soup, parse_events
+from services.cbssports import FetchResult, fetch_events, fetch_soup, parse_events
 from services.sqlite import fetch_odds_data, save_odds_data, setup_database
 
 FIXTURE_HTML = """
@@ -389,7 +389,16 @@ class AppDataFlowTests(unittest.TestCase):
             patch.object(
                 application,
                 "apply_refresh",
-                return_value={"parsed_count": 1},
+                return_value={
+                    "status": "complete",
+                    "requested_weeks": list(range(3, 19)),
+                    "successful_weeks": [4],
+                    "failed_weeks": [],
+                    "parsed_count": 1,
+                    "current_state_updates": 1,
+                    "closing_line_updates": 0,
+                    "final_result_updates": 0,
+                },
             ) as apply,
         ):
             refresh_result = application.refresh_data(2025)
@@ -399,6 +408,9 @@ class AppDataFlowTests(unittest.TestCase):
         self.assertEqual(apply.call_args.args[:2], (2025, [event]))
         self.assertEqual(apply.call_args.kwargs["requested_weeks"], list(range(3, 19)))
         self.assertEqual(refresh_result["events_count"], 1)
+        self.assertEqual(refresh_result["status"], "complete")
+        self.assertEqual(refresh_result["requested_count"], 16)
+        self.assertEqual(refresh_result["errors"], [])
 
         with patch.object(
             application, "fetch_odds_data", return_value=[event]
@@ -408,6 +420,97 @@ class AppDataFlowTests(unittest.TestCase):
         fetch.assert_called_once_with(2025)
         self.assertEqual(responses[0].event_id, 1)
         self.assertEqual(responses[0].favored_team, "SEA")
+
+    def test_refresh_response_reports_partial_and_failed_runs(self):
+        requested = list(range(3, 19))
+        partial_successful = [week for week in requested if week != 4]
+        cases = (
+            (
+                "partial",
+                FetchResult(
+                    [
+                        GameEvent(
+                            event_id=1,
+                            season_year=2025,
+                            week=3,
+                            short_name="SEA @ DEN",
+                            spread=3.0,
+                        ),
+                    ],
+                    requested_weeks=requested,
+                    successful_weeks=partial_successful,
+                    failed_weeks=[4],
+                    source_urls=["https://example.test/week-4"],
+                    errors=["week 4: timeout"],
+                    raw_failures=[],
+                ),
+                partial_successful,
+                [4],
+                ["week 4: timeout"],
+            ),
+            (
+                "failed",
+                FetchResult(
+                    [],
+                    requested_weeks=requested,
+                    successful_weeks=[],
+                    failed_weeks=requested,
+                    source_urls=["https://example.test/week-3"],
+                    errors=["week 3: timeout", "week 4: timeout"],
+                    raw_failures=[],
+                ),
+                [],
+                requested,
+                ["week 3: timeout", "week 4: timeout"],
+            ),
+        )
+        for status, events, successful, failed, expected_errors in cases:
+            with self.subTest(status=status):
+                persisted = {
+                    "refresh_id": 1,
+                    "status": status,
+                    "requested_weeks": requested,
+                    "successful_weeks": successful,
+                    "failed_weeks": failed,
+                    "parsed_count": len(events),
+                    "current_state_updates": len(events),
+                    "closing_line_updates": 0,
+                    "final_result_updates": 0,
+                }
+                with (
+                    patch.object(
+                        application,
+                        "load_config",
+                        return_value={"current_week": 4},
+                    ),
+                    patch.object(application, "fetch_events", return_value=events),
+                    patch.object(
+                        application,
+                        "apply_refresh",
+                        return_value=persisted,
+                    ) as apply,
+                ):
+                    result = application.refresh_data(2025)
+
+                self.assertEqual(result["status"], status)
+                self.assertEqual(result["successful_weeks"], successful)
+                self.assertEqual(result["failed_weeks"], failed)
+                self.assertEqual(result["successful_count"], len(successful))
+                self.assertEqual(result["failed_count"], len(failed))
+                self.assertEqual(result["errors"], expected_errors)
+                self.assertEqual(apply.call_args.kwargs["status"], status)
+
+    def test_refresh_ui_exposes_explicit_statuses(self):
+        source = (Path(__file__).parent / "static" / "index.html").read_text()
+        for marker in (
+            'id="refreshStatus"',
+            "complete: 'Refresh complete'",
+            "partial: 'Refresh partially completed'",
+            "failed: 'Refresh failed'",
+            "result.failed_weeks",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, source)
 
 
 if __name__ == "__main__":

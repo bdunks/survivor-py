@@ -284,6 +284,93 @@ def clear_all_picks(
 # Data Operations Endpoints
 
 
+def _bounded_refresh_errors(errors: object) -> list[str]:
+    if not isinstance(errors, (list, tuple)):
+        return []
+    return [str(error).strip()[:500] for error in errors if str(error).strip()][:5]
+
+
+def _refresh_response(
+    result: object,
+    *,
+    year: int,
+    starting_week: int,
+    requested_weeks: list[int],
+    errors: object = (),
+) -> dict[str, object]:
+    response = dict(result) if isinstance(result, dict) else {}
+    result_requested_weeks = response.get("requested_weeks")
+    requested = (
+        list(result_requested_weeks)
+        if isinstance(result_requested_weeks, list)
+        else list(requested_weeks)
+    )
+    result_successful_weeks = response.get("successful_weeks", [])
+    successful = (
+        list(result_successful_weeks)
+        if isinstance(result_successful_weeks, list)
+        else []
+    )
+    result_failed_weeks = response.get("failed_weeks", [])
+    failed = list(result_failed_weeks) if isinstance(result_failed_weeks, list) else []
+    status = response.get("status")
+    refresh_errors = _bounded_refresh_errors(errors)
+    if not refresh_errors and isinstance(response.get("error"), str):
+        refresh_errors = _bounded_refresh_errors([response["error"]])
+    if status not in {"complete", "partial", "failed"}:
+        status = "failed"
+        refresh_errors.append("Refresh returned no valid status.")
+    elif failed and status == "complete":
+        status = "partial" if successful else "failed"
+    if not refresh_errors and failed:
+        refresh_errors = ["Failed weeks: " + ", ".join(str(week) for week in failed)]
+    refresh_errors = refresh_errors[:5]
+    for key in (
+        "parsed_count",
+        "current_state_updates",
+        "closing_line_updates",
+        "final_result_updates",
+    ):
+        value = response.get(key, 0)
+        response[key] = value if isinstance(value, int) and value >= 0 else 0
+    parsed_count = response["parsed_count"]
+    requested_count = len(requested)
+    successful_count = len(successful)
+    failed_count = len(failed)
+    if status == "complete":
+        message = f"Refreshed {parsed_count} events for {year}"
+    elif status == "partial":
+        message = (
+            f"Refresh partially completed for {year}: "
+            f"{successful_count}/{requested_count} weeks succeeded; "
+            f"{failed_count} failed"
+        )
+    else:
+        message = (
+            f"Refresh failed for {year}: "
+            f"{successful_count}/{requested_count} weeks succeeded; "
+            f"{failed_count} failed"
+        )
+    response.update(
+        {
+            "status": status,
+            "message": message,
+            "year": year,
+            "events_count": parsed_count,
+            "starting_week": starting_week,
+            "requested_weeks": requested,
+            "successful_weeks": successful,
+            "failed_weeks": failed,
+            "requested_count": requested_count,
+            "successful_count": successful_count,
+            "failed_count": failed_count,
+            "errors": refresh_errors,
+            "error": "; ".join(refresh_errors)[:2000] or None,
+        }
+    )
+    return response
+
+
 @app.post("/api/data/refresh")
 def refresh_data(year: int = Query(..., ge=2020, le=2030)):
     """Refresh current odds, closing lines, and completed game results."""
@@ -298,31 +385,43 @@ def refresh_data(year: int = Query(..., ge=2020, le=2030)):
     started_at = datetime.now(UTC)
     try:
         events = fetch_events(year, starting_week=starting_week)
-    except Exception as error:
+        if events is None:
+            raise ValueError("Refresh returned no data")
+    except Exception as error:  # noqa: BLE001
         observed_at = datetime.now(UTC)
-        apply_refresh(
+        error_message = "; ".join(_bounded_refresh_errors([error])) or "Refresh failed."
+        result = apply_refresh(
             year,
             [],
             observed_at,
             status="failed",
-            error=str(error),
+            error=error_message,
             requested_weeks=requested_weeks,
+            successful_weeks=[],
+            failed_weeks=requested_weeks,
             source_urls=source_urls,
             started_at=started_at,
             finished_at=observed_at,
         )
-        raise
+        return _refresh_response(
+            result,
+            year=year,
+            starting_week=starting_week,
+            requested_weeks=requested_weeks,
+            errors=[error],
+        )
 
     finished_at = datetime.now(UTC)
-    failed_weeks = list(getattr(events, "failed_weeks", ()))
+    failed_weeks = list(getattr(events, "failed_weeks", ()) or ())
     successful_weeks = list(
         getattr(
             events,
             "successful_weeks",
             sorted({event.week for event in events} - set(failed_weeks)),
         )
+        or ()
     )
-    errors = list(getattr(events, "errors", ()))
+    errors = list(getattr(events, "errors", ()) or ())
     status = (
         "complete"
         if not failed_weeks
@@ -333,24 +432,22 @@ def refresh_data(year: int = Query(..., ge=2020, le=2030)):
         events,
         finished_at,
         status=status,
-        error="; ".join(errors) or None,
+        error="; ".join(_bounded_refresh_errors(errors))[:2000] or None,
         requested_weeks=requested_weeks,
         successful_weeks=successful_weeks,
         failed_weeks=failed_weeks,
-        source_urls=list(getattr(events, "source_urls", source_urls)),
-        raw_failures=getattr(events, "raw_failures", ()),
+        source_urls=list(getattr(events, "source_urls", source_urls) or source_urls),
+        raw_failures=getattr(events, "raw_failures", ()) or (),
         started_at=started_at,
         finished_at=finished_at,
     )
-    result.update(
-        {
-            "message": f"Refreshed {result['parsed_count']} events for {year}",
-            "year": year,
-            "events_count": result["parsed_count"],
-            "starting_week": starting_week,
-        }
+    return _refresh_response(
+        result,
+        year=year,
+        starting_week=starting_week,
+        requested_weeks=requested_weeks,
+        errors=errors,
     )
-    return result
 
 
 @app.get("/api/data/events", response_model=list[EventOddsResponse])

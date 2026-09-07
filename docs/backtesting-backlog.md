@@ -706,6 +706,7 @@ Do not implement a discovered follow-up in the same context unless the user expl
 - Legacy decision timestamps cannot be recovered, so migrated snapshots remain excluded from strict backtests; the documented manual endpoint is the only migration path. BACK-09, BACK-10, and BACK-11 were not implemented.
 
 ### BACK-09 — Add explicit refresh-run success/failure/partial status to UI
+**Status:** done
 
 **Evidence:** `apply_refresh` returns per-stage counts and records small refresh-run metadata including status, but the frontend currently displays only a generic success/failure message. Partial refreshes (some weeks succeed, others fail) are not surfaced in detail.
 
@@ -717,6 +718,21 @@ Do not implement a discovered follow-up in the same context unless the user expl
 
 **Risk if deferred:** Users cannot easily diagnose which weeks failed during a partial refresh without inspecting the database or server logs. Low risk for single-user local operation; medium risk if this becomes a shared tool.
 
+
+**Handoff:**
+- The refresh route now returns a stable `complete`, `partial`, or `failed` status with bounded error details, requested/successful/failed weeks, counts, and existing per-stage update counts. Fetch exceptions are recorded and returned as failed refresh results.
+- The frontend renders an accessible inline status for each outcome, lists failed weeks and bounded errors, reloads the schedule only for complete/partial runs, and handles empty or HTTP error responses without claiming success.
+- Added deterministic route status-mapping tests and a browser-free frontend contract test.
+
+**Verification:**
+- `uv run python -m unittest discover -v`: 62 tests pass.
+- `mise run check`: Ruff lint/format and all 62 tests pass.
+- `python -m compileall -q .`: passes.
+- `git diff --check`: passes.
+- `node --check` on the extracted frontend script: passes.
+
+**Limitations / deferred:**
+- Refresh history remains database-backed operational metadata rather than a separate history view; BACK-10 and BACK-11 remain untouched.
 ### BACK-10 — Validate closing-line kickoff timestamp against actual game kickoff
 
 **Evidence:** `update_closing_line` accepts `kickoff_at` as a parameter and guards pre-kickoff observations, but it does not validate that `kickoff_at` matches the event's actual scheduled kickoff from the current game state. A caller could pass an incorrect kickoff time and silently update a closing line post-kickoff.

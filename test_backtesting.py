@@ -293,9 +293,15 @@ class PointInTimeContractTests(unittest.TestCase):
                 application, "fetch_events", side_effect=RuntimeError("fixture failure")
             ),
             patch.object(application, "apply_refresh") as apply,
-            self.assertRaisesRegex(RuntimeError, "fixture failure"),
         ):
-            application.refresh_data(2025)
+            result = application.refresh_data(2025)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("fixture failure", result["error"])
+        self.assertEqual(
+            apply.call_args.kwargs["failed_weeks"],
+            list(range(2, 19)),
+        )
 
         apply.assert_called_once()
         self.assertEqual(apply.call_args.kwargs["status"], "failed")

@@ -60,6 +60,24 @@
     }
 
 
+    #refreshStatus {
+      margin: 0.5rem 0;
+      font-size: 0.85rem;
+    }
+
+    #refreshStatus[data-status="complete"] {
+      color: #68d391;
+    }
+
+    #refreshStatus[data-status="partial"] {
+      color: #f6ad55;
+    }
+
+    #refreshStatus[data-status="failed"] {
+      color: #fc8181;
+    }
+
+
     .survivor-grid-container {
       overflow-x: auto;
     }
@@ -245,6 +263,8 @@
     </article>
 
 
+    <p id="refreshStatus" role="status" aria-live="polite" hidden></p>
+
     <div class="survivor-grid-container">
       <table class="survivor-grid" id="survivorGrid">
         <thead></thead>
@@ -266,6 +286,7 @@
       const yearSelect = document.getElementById('yearSelect');
       const currentWeekInput = document.getElementById('currentWeekInput');
 
+      const refreshStatus = document.getElementById('refreshStatus');
       // --- CONSTANTS & STATE ---
       const NFL_TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAC", "KC", "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS"];
       const WEEKS = 18;
@@ -291,9 +312,11 @@
         const response = await fetch(url, options);
         const data = await response.json().catch(() => null);
         if (!response.ok) {
-          throw new Error(
+          const error = new Error(
             data?.detail || data?.error || `HTTP ${response.status}: ${response.statusText}`
           );
+          error.response = data;
+          throw error;
         }
         return data;
       }
@@ -356,12 +379,24 @@
         try {
           refreshDataBtn.setAttribute('aria-busy', 'true');
           refreshDataBtn.textContent = 'Refreshing...';
-          await request(`/api/data/refresh?year=${year}`, { method: 'POST' });
+          const result = await request(`/api/data/refresh?year=${year}`, { method: 'POST' });
+          const status = showRefreshStatus(result);
 
-          await loadScheduleData();
-          renderGrid();
+          if (status === 'complete' || status === 'partial') {
+            await loadScheduleData();
+            renderGrid();
+          }
         } catch (error) {
-          showError(`Failed to refresh data: ${error.message}`);
+          const response = error?.response;
+          const message = error instanceof Error && error.message
+            ? error.message
+            : String(error || 'Unknown refresh error');
+          const refreshResult = response
+            && typeof response === 'object'
+            && (typeof response.status === 'string' || Array.isArray(response.errors))
+            ? response
+            : { status: 'failed', errors: [message] };
+          showRefreshStatus(refreshResult);
         } finally {
           refreshDataBtn.setAttribute('aria-busy', 'false');
           refreshDataBtn.textContent = 'Refresh Data';
@@ -407,6 +442,60 @@
           return null;
         }
       }
+
+      function showRefreshStatus(result) {
+        const labels = {
+          complete: 'Refresh complete',
+          partial: 'Refresh partially completed',
+          failed: 'Refresh failed',
+        };
+        const hasStatus = result && typeof result === 'object'
+          && Object.prototype.hasOwnProperty.call(labels, result.status);
+        const status = hasStatus ? result.status : 'failed';
+        const requestedWeeks = Array.isArray(result?.requested_weeks)
+          ? result.requested_weeks.slice(0, 18)
+          : [];
+        const failedWeeks = Array.isArray(result?.failed_weeks)
+          ? result.failed_weeks.slice(0, 18)
+          : [];
+        const count = (value, fallback) =>
+          Number.isInteger(value) && value >= 0 ? value : fallback;
+        const requestedCount = count(result?.requested_count, requestedWeeks.length);
+        const successfulCount = count(result?.successful_count,
+          Array.isArray(result?.successful_weeks) ? result.successful_weeks.length : 0);
+        const failedCount = count(result?.failed_count, failedWeeks.length);
+        const eventsCount = count(
+          result?.events_count,
+          count(result?.parsed_count, 0)
+        );
+        const errors = Array.isArray(result?.errors)
+          ? result.errors.filter(Boolean).slice(0, 5).map(error => String(error).slice(0, 500))
+          : [];
+        if (!errors.length && typeof result?.error === 'string' && result.error) {
+          errors.push(result.error.slice(0, 500));
+        }
+        if (!hasStatus) {
+          errors.unshift('Refresh response did not include a valid status.');
+        }
+
+        let message = `${labels[status]}: ${eventsCount} events; `
+          + `${successfulCount}/${requestedCount} weeks succeeded`;
+        if (failedCount) {
+          message += `; ${failedCount} failed`;
+        }
+        if (failedWeeks.length) {
+          message += `. Failed weeks: ${failedWeeks.join(', ')}`;
+        }
+        if (errors.length) {
+          message += `. ${errors.join(' ')}`;
+        }
+        console[status === 'failed' ? 'error' : 'info'](message);
+        refreshStatus.dataset.status = status;
+        refreshStatus.textContent = message;
+        refreshStatus.hidden = false;
+        return status;
+      }
+
 
       // --- UTILITY FUNCTIONS ---
       function showError(message) {
