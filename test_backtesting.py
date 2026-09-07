@@ -266,7 +266,16 @@ class PointInTimeContractTests(unittest.TestCase):
         with (
             patch.object(application, "ALGORITHM_DISPATCH", dispatch),
             patch.object(application, "fetch_odds_data", return_value=snapshot_rows),
-            patch.object(application, "load_config", return_value={"picks": []}),
+            patch.object(
+                application,
+                "load_config",
+                return_value={
+                    "picks": [],
+                    "current_week": 1,
+                    "split_week": 10,
+                    "algorithm": "best-spread",
+                },
+            ),
         ):
             for slug in dispatch:
                 application.optimize_single_algorithm(1, slug, year=2025)
@@ -517,7 +526,6 @@ class PointInTimeContractTests(unittest.TestCase):
                 [("clear", 1), ("clear", 2)],
             )
 
-    @unittest.expectedFailure
     def test_optimization_run_identifies_snapshot_and_output_picks(self):
         # Expected failure: BACK-05 owns optimization-run provenance.
         save_optimization_run = required_sqlite_function(
@@ -529,6 +537,12 @@ class PointInTimeContractTests(unittest.TestCase):
 
         with temporary_database() as db_path:
             setup_database(db_path)
+            snapshot_id = sqlite_service.freeze_decision_snapshot(
+                season_year=2025,
+                survivor_week=1,
+                decision_at=REFRESH_ONE,
+                db_name=db_path,
+            )
             run_id = save_optimization_run(
                 season_year=2025,
                 algorithm="best-spread",
@@ -537,13 +551,13 @@ class PointInTimeContractTests(unittest.TestCase):
                 parameters={"fixture": True},
                 code_revision="fixture-revision",
                 generated_at=REFRESH_TWO,
-                decision_snapshot_id=17,
+                decision_snapshot_id=snapshot_id,
                 recommendations=[Pick("SEA", 1, 3.0), Pick("KC", 2, 4.5)],
                 db_name=db_path,
             )
 
             run = fetch_optimization_run(run_id, db_name=db_path)
-            self.assertEqual(run["decision_snapshot_id"], 17)
+            self.assertEqual(run["decision_snapshot_id"], snapshot_id)
             self.assertEqual(
                 run["recommendations"],
                 [Pick("SEA", 1, 3.0), Pick("KC", 2, 4.5)],

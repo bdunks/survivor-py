@@ -1197,3 +1197,57 @@ def fetch_optimization_run(
             for item in json.loads(recommendations)
         ],
     }
+
+
+def find_latest_optimization_run(
+    season_year: int,
+    week: int,
+    algorithm: str,
+    db_name: str | Path = DEFAULT_DB_NAME,
+) -> dict[str, object] | None:
+    """Find the most recent optimization run for a season/week/algorithm."""
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        row = connection.execute(
+            """
+            SELECT run_id, season_year, algorithm, split_week, current_week,
+                   parameters, code_revision, source_hash, generated_at,
+                   decision_snapshot_id, recommendations
+            FROM optimization_runs
+            WHERE season_year = ? AND current_week = ? AND algorithm = ?
+            ORDER BY generated_at DESC
+            LIMIT 1
+            """,
+            (season_year, week, algorithm),
+        ).fetchone()
+    if row is None:
+        return None
+    (
+        stored_run_id,
+        stored_season_year,
+        stored_algorithm,
+        split_week,
+        current_week,
+        parameters,
+        code_revision,
+        source_hash,
+        generated_at,
+        decision_snapshot_id,
+        recommendations,
+    ) = row
+    return {
+        "run_id": stored_run_id,
+        "season_year": stored_season_year,
+        "algorithm": stored_algorithm,
+        "split_week": split_week,
+        "current_week": current_week,
+        "parameters": json.loads(parameters),
+        "code_revision": code_revision,
+        "source_hash": source_hash,
+        "generated_at": generated_at,
+        "decision_snapshot_id": decision_snapshot_id,
+        "recommendations": [
+            Pick(item["team"], item["week"], item.get("spread"))
+            for item in json.loads(recommendations)
+        ],
+    }

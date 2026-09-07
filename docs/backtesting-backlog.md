@@ -422,7 +422,7 @@ Checks: `uv run python -m unittest -v test_core test_services` passes (23 tests)
 
 ## BACK-05 — Persist reproducible optimization runs
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-04
 
 ### Goal
@@ -466,7 +466,32 @@ git diff --check
 
 ### Handoff
 
-Not started.
+**Implementation:**
+- Added `_get_git_revision()` helper in `app.py` to get code revision from `git rev-parse HEAD` and source hash from `git diff HEAD` when worktree is dirty.
+- Modified `optimize_single_algorithm()` to:
+  - Load config to get `current_week`.
+  - Check for existing decision snapshot via `find_decision_snapshot(year, current_week)`.
+  - Use snapshot events if snapshot exists (authoritative); otherwise use current state (exploratory).
+  - Save optimization run with `save_optimization_run()`, including snapshot_id, recommendations, code revision, and source hash.
+  - Silently skip run persistence if git revision cannot be identified (dirty/unidentified source).
+- Modified `add_pick()` to:
+  - Load config to get selected algorithm and current_week.
+  - When pick week matches current_week, find latest optimization run via `find_latest_optimization_run(season_year, current_week, algorithm)`.
+  - Link pick to optimization run via `optimization_run_id` when pick matches current-week recommendation.
+- Added `find_latest_optimization_run()` to `services/sqlite.py` to find most recent optimization run for a season/week/algorithm.
+- Updated test mocks in `test_core.py` and `test_backtesting.py` to include all required config fields (`current_week`, `split_week`, `algorithm`).
+- Removed `@unittest.expectedFailure` from `test_optimization_run_identifies_snapshot_and_output_picks` and updated it to create a decision snapshot before testing run persistence.
+
+**Verification:**
+- All 35 tests pass (`uv run python -m unittest -v test_core test_services`).
+- `mise run check` passes (lint, format, test).
+- `python -m compileall -q .` succeeds.
+- `git diff --check` clean.
+- Stored runs identify immutable decision snapshot, parameters, source revision, and recommendations.
+- Algorithm-assisted picks have non-null `optimization_run_id`; manual picks remain null.
+- Optimization uses snapshot when one exists; uses current state before first pick.
+- API does not persist runs when git revision cannot be identified (exception caught, run creation skipped).
+- Existing algorithm invariants preserved (no algorithm changes).
 
 ---
 

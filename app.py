@@ -1,3 +1,4 @@
+import subprocess
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Query
@@ -23,8 +24,12 @@ from services import (
     apply_refresh,
     clear_all_pick_events,
     fetch_current_picks,
+    fetch_decision_snapshot,
     fetch_events,
     fetch_odds_data,
+    find_decision_snapshot,
+    find_latest_optimization_run,
+    save_optimization_run,
 )
 
 app = FastAPI(
@@ -32,6 +37,41 @@ app = FastAPI(
     description="API for optimizing NFL survivor pool picks using multiple algorithms",
     version="1.0.0",
 )
+
+
+def _get_git_revision() -> tuple[str, str | None]:
+    """Get code revision and source hash. Raises ValueError if dirty/unidentified."""
+    try:
+        rev = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        ).stdout.strip()
+        dirty = (
+            subprocess.run(
+                ["git", "diff", "--quiet", "HEAD"],
+                timeout=5,
+                check=False,
+            ).returncode
+            != 0
+        )
+        source_hash = None
+        if dirty:
+            hash_result = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+            if hash_result.returncode == 0:
+                import hashlib
+
+                source_hash = hashlib.sha256(hash_result.stdout).hexdigest()[:16]
+        return rev, source_hash
+    except Exception as e:
+        raise ValueError(f"Cannot identify source revision: {e}") from e
 
 
 # NFL teams constant
@@ -142,6 +182,22 @@ def add_pick(pick_request: PickRequest):
         week=pick_request.week,
         spread=pick_request.spread,
     )
+
+    config = load_config()
+    algorithm = config["algorithm"]
+    current_week = config["current_week"]
+
+    optimization_run_id = None
+    if pick_request.week == current_week:
+        run = find_latest_optimization_run(
+            pick_request.season_year, current_week, algorithm
+        )
+        if run is not None:
+            recommendations = run["recommendations"]
+            current_week_recs = [r for r in recommendations if r.week == current_week]
+            if current_week_recs and current_week_recs[0].team == pick.team:
+                optimization_run_id = run["run_id"]
+
     try:
         append_pick_event(
             season_year=pick_request.season_year,
@@ -149,6 +205,7 @@ def add_pick(pick_request: PickRequest):
             action="set",
             pick=pick,
             recorded_at=datetime.now(UTC),
+            optimization_run_id=optimization_run_id,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -283,11 +340,36 @@ def optimize_single_algorithm(
     if algorithm not in ALGORITHM_DISPATCH:
         raise HTTPException(status_code=400, detail="Invalid algorithm")
 
-    load_config()
-    events = fetch_odds_data(year)
+    config = load_config()
+    current_week = config["current_week"]
+    snapshot_id = find_decision_snapshot(year, current_week)
+
+    if snapshot_id is not None:
+        events = fetch_decision_snapshot(year, current_week)
+    else:
+        events = fetch_odds_data(year)
+
     picks = fetch_current_picks(year)
     algorithm_name, optimize = ALGORITHM_DISPATCH[algorithm]
     results = optimize(events, split_week, picks)
+
+    try:
+        code_revision, source_hash = _get_git_revision()
+        save_optimization_run(
+            season_year=year,
+            algorithm=algorithm,
+            split_week=split_week,
+            current_week=current_week,
+            parameters={},
+            code_revision=code_revision,
+            generated_at=datetime.now(UTC),
+            decision_snapshot_id=snapshot_id,
+            recommendations=results,
+            source_hash=source_hash,
+        )
+    except ValueError:
+        pass
+
     return OptimizationResult(
         algorithm=algorithm_name,
         picks=results,

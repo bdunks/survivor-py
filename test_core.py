@@ -181,7 +181,12 @@ class OptimizerTests(unittest.TestCase):
                     patch.object(
                         application,
                         "load_config",
-                        return_value={"picks": []},
+                        return_value={
+                            "picks": [],
+                            "current_week": 1,
+                            "split_week": 10,
+                            "algorithm": "best-spread",
+                        },
                     ),
                     patch.object(
                         application,
