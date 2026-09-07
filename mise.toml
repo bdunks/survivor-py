@@ -1,6 +1,7 @@
 [tools]
 uv = "latest"
 ruff = "0.16.6"
+ty = "latest"
 
 [settings]
 python.uv_venv_auto = true
