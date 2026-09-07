@@ -187,7 +187,7 @@ Also run every exact command listed in the selected task's **Required commands**
 
 ## BACK-01 — Characterize point-in-time contracts
 
-**Status:** pending
+**Status:** done
 **Depends on:** none
 
 ### Goal
@@ -233,7 +233,11 @@ git diff --check
 
 ### Handoff
 
-Not started.
+Added `test_backtesting.py` with 12 deterministic tests using temporary SQLite paths and fixed UTC fixture timestamps. It covers current-state refreshes without schedule history, first-pick snapshots, replacement/clear immutability, shared algorithm inputs, closing lines, failed refreshes, season-aware pick history, optimization provenance, and result corrections.
+
+Two route-level checks pass now. Ten narrowly documented `@unittest.expectedFailure` tests remain for later owners: BACK-02 current-state storage, BACK-03 refresh/closing/result persistence, BACK-04 decision snapshots and pick history, and BACK-05 optimization-run provenance. No production schema, live CBS, frontend, or backtest code was changed.
+
+Checks: `uv run python -m unittest -v test_core test_services` passes (18 tests); each `mise run check` passes (30 tests, 10 documented expected failures); both `python -m compileall -q .` runs pass; both `git diff --check` runs pass.
 
 ---
 
