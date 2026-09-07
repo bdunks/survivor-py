@@ -21,6 +21,7 @@ ALGORITHM_METHODS = {
     "best-spread": "find_optimal_picks_best_spread",
     "back-to-front": "find_optimal_picks_back_to_front",
     "weighted-future-value": "find_optimal_picks_weighted_future_value",
+    "global-assignment": "find_optimal_picks_global_assignment",
 }
 
 EXPECTED_API_ROUTES = {
@@ -132,7 +133,7 @@ class OptimizerTests(unittest.TestCase):
                 )
                 for split_week in (10, 14, 18)
             },
-            {10: 0, 14: 7, 18: 59},
+            {10: 0, 14: 6, 18: 12},
         )
 
         week_14_horizon = optimizer.find_optimal_picks_weighted_future_value(events, 14)
@@ -144,12 +145,34 @@ class OptimizerTests(unittest.TestCase):
         self.assertEqual(pick_for_week(full_season_horizon, 14).team, "NOW")
         self.assertIn("SAV", {pick.team for pick in full_season_horizon})
 
+    def test_future_value_uses_best_future_favorite_only(self):
+        events = [
+            fixture_event(1, 1, "A", 3.0, "O1"),
+            fixture_event(2, 2, "A", 6.0, "O2"),
+            EventOdds(3, 2025, 3, "O3 @ A", 11.0),
+        ]
+        self.assertEqual(optimizer.calculate_future_value("A", 1, events, 3), 6.0)
+
+    def test_global_assignment_preserves_a_team_for_a_better_later_matchup(self):
+        events = [
+            fixture_event(1, 1, "A", 10.0, "O1"),
+            fixture_event(2, 1, "B", 9.0, "O2"),
+            fixture_event(3, 2, "A", 9.0, "O3"),
+            fixture_event(4, 2, "C", 1.0, "O4"),
+        ]
+        picks = optimizer.find_optimal_picks_global_assignment(events, 2)
+        self.assertEqual(
+            [(pick.week, pick.team) for pick in picks],
+            [(1, "B"), (2, "A")],
+        )
+
     def test_stable_algorithm_slugs_dispatch_through_the_retained_route(self):
         events = horizon_events()
         expected_names = {
             "best-spread": "Best Spread",
             "back-to-front": "Back to Front",
             "weighted-future-value": "Weighted Future Value",
+            "global-assignment": "Global Max Survival",
         }
 
         for slug in ALGORITHM_METHODS:

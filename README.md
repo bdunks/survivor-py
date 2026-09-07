@@ -1,6 +1,6 @@
 # NFL Survivor Pool Optimizer
 
-A small FastAPI web app for planning an NFL survivor pool. It fetches point spreads from CBS Sports and recommends one unused team per week with three different optimization strategies. The frontend keeps an 18-week schedule grid for manual review, sorting, and pick locking.
+A small FastAPI web app for planning an NFL survivor pool. It fetches point spreads from CBS Sports and recommends one unused team per week with four optimization strategies. The frontend keeps an 18-week schedule grid for manual review, sorting, and pick locking.
 
 ## Requirements
 
@@ -42,7 +42,8 @@ The grid always renders all 18 weeks. Projected Pool End Week is the optimizatio
 
 - **Best Spread** chooses the highest point-spread favorite available for each week, favoring the safest individual matchups.
 - **Back-to-Front** considers the schedule from later weeks back toward the beginning, using week position and spread to preserve a workable season plan.
-- **Weighted Future Value** balances a game's spread with the team's available future value and the position of the week, making a season-wide tradeoff rather than choosing only the largest current spread.
+- **Weighted Future Value** subtracts a tunable penalty for the team's best future favorite matchup from its current spread, reserving high-value teams when worthwhile.
+- **Global Max Survival** assigns the complete optimization horizon at once, maximizing the combined estimated survival probability while using each team only once.
 
 All algorithms respect manual picks and the one-team-per-season and one-pick-per-week constraints.
 
