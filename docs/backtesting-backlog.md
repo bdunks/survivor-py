@@ -585,7 +585,7 @@ git diff --check
 
 ## BACK-07 — End-to-end audit, backup, and operating documentation
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-06
 
 ### Goal
@@ -632,7 +632,29 @@ git diff --check
 
 ### Handoff
 
-Not started.
+**Implementation:**
+
+- Added `backup_database(source, destination)` to `services/sqlite.py` using stdlib `Connection.backup()` and exported it from `services/__init__.py`.
+- Added public `fetch_closing_line(event_id, db_name)`; the backtest runner uses it instead of duplicating the closing-line query.
+- Expanded `test_backup_database_restores_complete_state` to copy a temporary source database to a backup and restore it into a separate temporary path.
+- Expanded `test_end_to_end_workflow_from_empty_database_through_backtest` to prove current-state reads, first-pick snapshot freezing and immutability, persisted optimization-run provenance and recommendations, a linked actual pick event, independent closing-line and final-result reads, strict rejection of incomplete snapshot history, and degraded snapshot-based grading.
+- Corrected README configuration documentation: `config.json` retains `current_week`, `algorithm`, and `split_week` preferences; actual picks are season-aware SQLite `pick_events`. README also documents recorded recommendations, simulated picks, the final weeks 1–18 refresh, every aggregate metric, backup/restore, retained refresh metadata, and the absence of successful routine payload archives.
+- Updated CLAUDE.md only for the implemented architecture and runtime workflow: SQLite historical tables and backup, snapshot-based optimization/backtesting, and configuration preferences.
+- Existing limitations remain recorded under **Discovered follow-up work**; BACK-08 through BACK-11 were not implemented.
+
+**Verification:**
+
+- `uv run python -m unittest discover -v`: 55 tests pass.
+- `mise run check`: Ruff lint/format and all 55 tests pass.
+- `python -m compileall -q .`: passes.
+- `git diff --check`: passes.
+- Temporary SQLite backup/restore and the empty-database end-to-end fixture both pass.
+- Full codebase-memory index refreshed in full mode: 421 nodes and 1,697 edges, with zero skipped or parse-partial files.
+- `check_index_coverage` returned `no_recorded_issue` and `metadata_match` for all seven changed paths: `CLAUDE.md`, `README.md`, `docs/backtesting-backlog.md`, `backtest.py`, `services/__init__.py`, `services/sqlite.py`, and `test_backtesting.py`.
+- `git rev-list --count 40e7b19356ff8d56e2e17ee13128c44d4609258b..HEAD`: 1 after the amended commit.
+- `git show --check HEAD`: passes, and the final worktree is clean.
+
+**Discovered follow-up work recorded below.**
 
 ---
 
@@ -647,3 +669,51 @@ Add new entries here only when execution finds necessary work outside the active
 - Risk if deferred
 
 Do not implement a discovered follow-up in the same context unless the user explicitly changes the backlog scope.
+
+### BACK-08 — Migrate existing config.json picks to SQLite ledger
+
+**Evidence:** `config.json` may contain existing `picks` entries from earlier manual UI usage. Those picks have no season, no timestamp, and no snapshot reference. `app.py` routes no longer read `config.picks`; the frontend now sends season-aware requests. Existing `picks` in local `config.json` files are orphaned.
+
+**Affected paths:** `app.py`, `config_store.py`, user `config.json` files.
+
+**Why outside BACK-07:** BACK-07 scope explicitly defers migration ("Migration deferred (out of scope: no silent season guessing)"). A migration requires an explicit season choice from the user or a documented manual procedure, not silent inference.
+
+**Dependency:** BACK-07 (completed).
+
+**Risk if deferred:** Users with existing config picks will not see them in the UI after upgrading to the BACK-07+ application. Low risk if documented clearly in upgrade notes; medium risk if users assume the application will preserve their picks automatically.
+
+### BACK-09 — Add explicit refresh-run success/failure/partial status to UI
+
+**Evidence:** `apply_refresh` returns per-stage counts and records small refresh-run metadata including status, but the frontend currently displays only a generic success/failure message. Partial refreshes (some weeks succeed, others fail) are not surfaced in detail.
+
+**Affected paths:** `static/index.html`, `app.py` refresh route response shape.
+
+**Why outside BACK-07:** BACK-07 is documentation and audit focused; UI enhancements for refresh status are a separate frontend feature not required for backtest correctness.
+
+**Dependency:** BACK-03 (completed: `apply_refresh` already records per-stage counts).
+
+**Risk if deferred:** Users cannot easily diagnose which weeks failed during a partial refresh without inspecting the database or server logs. Low risk for single-user local operation; medium risk if this becomes a shared tool.
+
+### BACK-10 — Validate closing-line kickoff timestamp against actual game kickoff
+
+**Evidence:** `update_closing_line` accepts `kickoff_at` as a parameter and guards pre-kickoff observations, but it does not validate that `kickoff_at` matches the event's actual scheduled kickoff from the current game state. A caller could pass an incorrect kickoff time and silently update a closing line post-kickoff.
+
+**Affected paths:** `services/sqlite.py` `update_closing_line`, `apply_refresh` closing-line persistence.
+
+**Why outside BACK-07:** BACK-07 scope is end-to-end workflow audit and documentation, not hardening edge-case timestamp validation. The current implementation relies on the caller (refresh logic) to pass the correct kickoff; an explicit cross-check would be a defensive improvement, not a correctness fix for the documented workflow.
+
+**Dependency:** BACK-03 (completed: closing-line updates exist).
+
+**Risk if deferred:** If CBS data returns incorrect kickoff times or the refresh logic has a bug, closing lines could be updated with post-kickoff spreads and silently accepted. Low risk: CBS kickoff times are generally reliable, and test fixtures use correct timestamps. Medium risk in production if kickoff time parsing ever regresses.
+
+### BACK-11 — Add automated end-of-season backtest run and comparison report
+
+**Evidence:** `backtest.py` exists and works, but users must manually run it for each algorithm after the season ends. There is no scripted workflow to run all four algorithms, compare their results, and generate a summary report.
+
+**Affected paths:** New script or Mise task wrapping `backtest.py` for all algorithms.
+
+**Why outside BACK-07:** BACK-07 scope includes documenting how to run backtests, not automating multi-algorithm comparison or creating a summary report. Automation is a convenience feature, not a correctness requirement.
+
+**Dependency:** BACK-06 (completed: `backtest.py` works), BACK-07 (completed: backtest documented).
+
+**Risk if deferred:** Users must manually run four separate `backtest.py` invocations and manually compare JSON/CSV outputs. Low risk: the manual process is straightforward and documented. Medium risk if this becomes a shared tool where standardized comparison is expected.

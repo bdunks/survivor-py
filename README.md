@@ -30,14 +30,13 @@ Open <http://127.0.0.1:8000/>. FastAPI serves the static frontend and API from t
 ## Weekly workflow
 
 1. Select the season and enter the current week.
-2. Select **Refresh Data** to fetch odds from the current week through week 18.
+2. Select **Refresh Data** to fetch the latest odds and finalize the previous week's results. Refresh requests `max(1, current_week - 1)` through week 18 from CBS Sports, updating current game state, closing lines (last pre-kickoff observations), and final results.
 3. Choose an algorithm and review its suggested picks in the schedule grid.
 4. Set **Projected Pool End Week** to the expected last week of your pool.
 5. Change the algorithm selector to inspect each strategy and compare the suggestions manually. One selected algorithm is shown at a time.
-6. Click grid cells to lock or unlock picks. Team and week columns are sortable, and **Reset Picks** clears all manual picks.
+6. Click grid cells to lock or unlock picks. When you save the first pick for a survivor week, the application freezes an immutable decision snapshot capturing the complete optimizer input at that time. Team and week columns are sortable, and **Reset Picks** clears all manual picks.
 
 The grid always renders all 18 weeks. Projected Pool End Week is the optimization horizon: recommendations prioritize weeks through that week and do not reserve teams merely for weeks after it.
-
 ## Algorithms
 
 - **Best Spread** chooses the highest point-spread favorite available for each week, favoring the safest individual matchups.
@@ -49,19 +48,113 @@ All algorithms respect manual picks and the one-team-per-season and one-pick-per
 
 ## Configuration and local data
 
-`config.example.json` is the canonical configuration example. Its keys are:
+`config.example.json` documents the UI preference keys:
 
 - `current_week`: the first week used when refreshing CBS data
-- `picks`: saved manual picks, each containing a team, week, and optional spread
 - `algorithm`: the selected algorithm slug
 - `split_week`: the projected pool-end/optimization horizon
 
-The app reads and writes `config.json` in the repository directory. Odds are stored in the local SQLite database `odds_data.db`. Both runtime files are ignored and should not be committed.
+`config.json` retains these preferences. Actual picks are season-aware `pick_events` in SQLite, not configuration entries.
+
+The app reads and writes `config.json` in the repository directory. Odds and pick history are stored in the local SQLite database `odds_data.db`. Both runtime files are ignored and should not be committed.
 
 ## CBS Sports data
 
 Refreshing requires network access and depends on CBS Sports' HTML structure. Games with missing or malformed identifiers, matchups, or spreads are skipped. Network failures skip the affected week. The scraper provides no retries, caching, proxy support, or rate-limit support.
 
+
+## Historical data and backtesting
+
+The application preserves point-in-time observations for offline algorithm evaluation.
+
+### Data model
+
+- **Current state:** the latest successfully fetched schedule and spreads, updated in place on every refresh. This is what the live UI displays.
+- **Decision snapshot:** an immutable complete optimizer input frozen when the first actual pick for a season/week is saved. Each survivor week has at most one authoritative snapshot.
+- **Actual picks:** the season-aware pick event ledger recording every `set` and `clear` action with server timestamps.
+- **Recorded recommendations:** the output of a live optimization request, persisted in `optimization_runs` with its algorithm, parameters, source revision, generation time, and snapshot ID; it is not an actual pick.
+- **Closing lines:** the last spread observed before each game's kickoff. These are evaluation benchmarks, not decision inputs.
+- **Final results:** authoritative game status and scores, with observed and correction timestamps.
+- **Simulated picks:** selections generated during a backtest from each authoritative snapshot and prior simulated picks; they are report output, not actual `pick_events`.
+
+### End-of-season workflow
+
+After the regular season completes and final scores settle:
+
+1. Select the completed season and set `current_week` to 1 in the configuration.
+2. Run **Refresh Data** once to fetch weeks 1–18 and finalize all results.
+3. Backup the database (see below).
+
+### Running backtests
+
+A strict authoritative-snapshot backtest uses the immutable decision snapshot for each week and never substitutes later current state. Run it from the repository directory:
+
+```bash
+uv run python backtest.py --season 2025 --algorithm best-spread --mode strict --output results.json
+```
+
+**Modes:**
+
+- `strict` (default): requires a decision snapshot for every week; fails if any are missing.
+- `degraded`: skips weeks with missing snapshots and reports which weeks were excluded.
+
+**Output metrics (aggregate):**
+
+- `first_elimination_week`: first week with a loss or tie; null if no elimination occurs.
+- `wins`, `losses`, `ties`, `ungraded`: counts of each weekly outcome. Ties remain separately counted but trigger elimination like losses.
+- `weeks_survived`: number of weekly selections represented in the report; selections after elimination are marked counterfactual.
+- `avg_decision_spread`: mean absolute spread for selected teams from the authoritative decision snapshots.
+- `avg_closing_spread`: mean absolute closing spread for selected games; weeks without a closing line are omitted.
+- `avg_decision_to_closing`: mean change from decision to close, calculated as absolute closing spread minus absolute decision spread.
+- `avg_selected_vs_best_alternative`: mean selected absolute spread minus the best legal same-week alternative in the snapshot.
+
+**Output formats:**
+
+- JSON (default): `--format json`
+- CSV: `--format csv`
+
+**Important limitations:**
+
+- Spread metrics are not calibrated win probabilities. They measure relative optimizer behavior, not absolute skill.
+- Closing lines represent the last spread this application observed, not guaranteed sportsbook market closes.
+- Missing decision snapshots cannot be synthesized; strict mode correctly fails rather than substituting later data.
+
+### Database backup and restore
+
+The local SQLite database `odds_data.db` contains current observations, decision snapshots, actual picks, recorded recommendations, and results. Use the standard-library `Connection.backup()` helper:
+
+```python
+from services import backup_database
+
+backup_database("odds_data.db", "odds_data_backup.db")
+backup_database(
+    "odds_data_backup.db", "odds_data_restored.db"
+)  # verify/restore to a temp path
+```
+
+To restore the live database, stop the app first and restore into `odds_data.db`:
+
+```python
+backup_database("odds_data_backup.db", "odds_data.db")
+```
+
+A filesystem copy is also valid:
+
+```bash
+cp odds_data.db odds_data_backup.db
+cp odds_data_backup.db odds_data.db  # restore after stopping the app
+```
+
+### Database growth
+
+- One decision snapshot per season/survivor week (at most 18 per season).
+- One pick event per actual `set` or `clear` action.
+- One optimization run per algorithm evaluation shown to the user.
+- **Refresh-run metadata:** one small retained record per refresh attempt, including requested weeks, times, status, and errors. Even 168 attempts per week is only a few thousand rows per season.
+- Raw CBS HTML payloads are retained only for failed parser diagnosis; successful routine refresh payloads are not archived.
+- Current game state, closing lines, and final results are one row per event, updated in place.
+
+Bounded growth: the database scales with decision points, not refresh frequency.
 ## Development checks
 
 Before committing, run:

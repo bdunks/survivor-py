@@ -2,8 +2,10 @@ from .cbssports import fetch_events, fetch_soup, parse_events
 from .sqlite import (
     append_pick_event,
     apply_refresh,
+    backup_database,
     clear_all_pick_events,
     create_refresh_run,
+    fetch_closing_line,
     fetch_current_picks,
     fetch_current_state,
     fetch_decision_snapshot,
@@ -29,8 +31,10 @@ from .sqlite import (
 __all__ = [
     "append_pick_event",
     "apply_refresh",
+    "backup_database",
     "clear_all_pick_events",
     "create_refresh_run",
+    "fetch_closing_line",
     "fetch_current_picks",
     "fetch_current_state",
     "fetch_decision_snapshot",

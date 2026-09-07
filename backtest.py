@@ -16,6 +16,7 @@ from models import Pick
 from optimizer import ALGORITHM_DISPATCH
 from services.sqlite import (
     DEFAULT_DB_NAME,
+    fetch_closing_line,
     fetch_game_result,
     fetch_snapshot_events,
     find_decision_snapshot,
@@ -43,15 +44,7 @@ def _get_git_revision() -> str:
 
 def _fetch_closing_line(event_id: int, db_name: str | Path = DEFAULT_DB_NAME) -> dict:
     """Fetch closing line for an event."""
-    import sqlite3
-
-    with sqlite3.connect(db_name) as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
-        row = conn.execute(
-            "SELECT spread, observed_at FROM closing_lines WHERE event_id = ?",
-            (event_id,),
-        ).fetchone()
-    return {"spread": row[0], "observed_at": row[1]} if row else {}
+    return fetch_closing_line(event_id, db_name) or {}
 
 
 @dataclass

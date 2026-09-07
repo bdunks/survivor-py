@@ -28,11 +28,11 @@ mise run check
 - `models.py`: Domain values: `EventOdds` and `Pick`.
 - `optimizer.py`: The three module-level optimization functions and the single `ALGORITHM_DISPATCH` mapping.
 - `services/cbssports.py`: CBS Sports HTTP fetching and HTML parsing.
-- `services/sqlite.py`: Fixed-purpose SQLite setup, odds upsert, and season-filtered reads.
+- `services/sqlite.py`: Fixed-purpose SQLite setup, current game state, immutable decision snapshots, closing lines, final results, pick event ledger, optimization run provenance, and backup.
 - `services/__init__.py`: Explicit service exports.
 - `static/index.html`: Same-origin frontend with season/current-week controls, algorithm selection, projected-end control, manual picks, sorting, and the 18-week grid.
-- `test_core.py`, `test_services.py`: Deterministic standard-library regression tests.
-
+- `backtest.py`: Offline backtest runner using immutable decision snapshots and stdlib-only argparse/json/csv output.
+- `test_core.py`, `test_services.py`, `test_backtesting.py`, `test_backtest.py`: Deterministic standard-library regression tests.
 The retained API surface is:
 
 - `GET /api/config`
@@ -54,18 +54,20 @@ The browser loads configuration, loads stored events for the selected season, an
 
 `split_week` is exposed in the UI as **Projected Pool End Week**. It means the expected last week of the survivor pool and the optimization horizon. The optimizer prioritizes weeks through that horizon rather than reserving teams solely for later weeks, while the frontend continues to render all 18 weeks.
 
-Refreshing reads `current_week` from the configuration, fetches CBS data from that week through week 18, and stores the events in `odds_data.db`. Optimization reads the selected season's stored events and saved picks, then dispatches through `ALGORITHM_DISPATCH`.
-
+Refreshing reads `current_week` from the configuration, fetches CBS data from `max(1, current_week - 1)` through week 18, and stores current game state, closing lines, and final results in `odds_data.db`. When the first actual pick for a season/week is saved, the application freezes an immutable decision snapshot capturing the complete optimizer input at that time. Optimization reads the authoritative snapshot when one exists for that survivor week; otherwise it uses current state. Recorded optimization runs include the decision snapshot ID, code revision, parameters, and recommendations.
 ## Configuration and local data
 
-`config.example.json` is the canonical example. The configuration keys are:
+- `current_week`: the first week used when refreshing CBS data
+- `algorithm`: the selected algorithm slug
+- `split_week`: the projected pool-end/optimization horizon
 
-- `current_week`
-- `picks`
-- `algorithm`
-- `split_week`
-
+Actual picks are stored in the SQLite database as a season-aware event ledger, not in `config.json`.
 `config.json` is the local JSON configuration written by the app. `odds_data.db` is the local SQLite odds database. Both files are ignored and must remain local.
+
+
+## Backtesting
+
+`backtest.py` is an offline standard-library runner that evaluates an algorithm's historical performance against immutable decision snapshots without look-ahead bias. It runs the existing optimizer with earlier simulated picks locked, grades selections using final observations without passing scores or later spreads into the optimizer, and emits deterministic JSON or CSV. Strict mode requires a decision snapshot for every week; degraded mode skips missing weeks and reports which were excluded. See README.md for metrics and usage.
 
 ## CBS Sports limitations
 

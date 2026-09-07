@@ -875,6 +875,34 @@ def update_closing_line(
     return True
 
 
+def fetch_closing_line(
+    event_id: int, db_name: str | Path = DEFAULT_DB_NAME
+) -> dict[str, object] | None:
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        row = connection.execute(
+            """
+            SELECT event_id, season_year, week, spread, observed_at,
+                   kickoff_at, refresh_id
+            FROM closing_lines
+            WHERE event_id = ?
+            """,
+            (event_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    keys = (
+        "event_id",
+        "season_year",
+        "week",
+        "spread",
+        "observed_at",
+        "kickoff_at",
+        "refresh_id",
+    )
+    return dict(zip(keys, row, strict=True))
+
+
 def upsert_game_result(
     event_id: int,
     status: str,
@@ -1251,3 +1279,12 @@ def find_latest_optimization_run(
             for item in json.loads(recommendations)
         ],
     }
+
+
+def backup_database(
+    source: str | Path = DEFAULT_DB_NAME,
+    destination: str | Path = "odds_data_backup.db",
+) -> None:
+    """Backup SQLite database using Connection.backup()."""
+    with _connection(source) as src, _connection(destination) as dst:
+        src.backup(dst)

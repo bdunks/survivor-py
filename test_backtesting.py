@@ -15,6 +15,7 @@ from services.sqlite import save_odds_data, setup_database
 REFRESH_ONE = "2025-09-01T12:00:00+00:00"
 REFRESH_TWO = "2025-09-02T12:00:00+00:00"
 KICKOFF = "2025-09-03T12:00:00+00:00"
+BEFORE_KICKOFF = "2025-09-03T11:00:00+00:00"
 AFTER_KICKOFF = "2025-09-03T12:01:00+00:00"
 CORRECTION = "2025-09-08T12:00:00+00:00"
 
@@ -598,6 +599,238 @@ class PointInTimeContractTests(unittest.TestCase):
             self.assertEqual(result["away_score"], 17)
             self.assertEqual(result["observed_at"], CORRECTION)
             self.assertEqual(result["corrected_at"], CORRECTION)
+
+    def test_backup_database_restores_complete_state(self):
+        """Verify SQLite backup and restore using stdlib Connection.backup()."""
+        with (
+            temporary_database() as source_db,
+            temporary_database() as backup_db,
+            temporary_database() as restored_db,
+        ):
+            setup_database(source_db)
+
+            # Populate source database
+            events = complete_snapshot(2025)
+            sqlite_service.save_current_state(
+                data=events,
+                refresh_id="refresh-backup",
+                observed_at=REFRESH_ONE,
+                db_name=source_db,
+            )
+            sqlite_service.append_pick_event(
+                season_year=2025,
+                week=1,
+                action="set",
+                pick=Pick("SEA", 1, 3.0),
+                recorded_at=REFRESH_ONE,
+                db_name=source_db,
+            )
+
+            # Backup, then restore the backup into a separate temporary database.
+            sqlite_service.backup_database(source_db, backup_db)
+            sqlite_service.backup_database(backup_db, restored_db)
+
+            current = sqlite_service.fetch_current_state(2025, db_name=restored_db)
+            self.assertEqual(len(current), 3)
+            self.assertEqual(current[0].spread, 3.0)
+
+            picks = sqlite_service.fetch_current_picks(2025, db_name=restored_db)
+            self.assertEqual(len(picks), 1)
+            self.assertEqual(picks[0].team, "SEA")
+
+    def test_end_to_end_workflow_from_empty_database_through_backtest(self):
+        """Exercise every persisted point-in-time workflow boundary."""
+        import backtest
+
+        with temporary_database() as db_path:
+            setup_database(db_path)
+
+            # Current state is written and read independently.
+            events = complete_snapshot(2025)
+            sqlite_service.save_current_state(
+                data=events,
+                refresh_id="refresh-1",
+                observed_at=REFRESH_ONE,
+                db_name=db_path,
+            )
+            current = sqlite_service.fetch_current_state(2025, db_name=db_path)
+            self.assertEqual(len(current), 3)
+            self.assertEqual(current[0].spread, 3.0)
+
+            # The first actual pick freezes one complete authoritative snapshot.
+            initial_pick_event_id = sqlite_service.append_pick_event(
+                season_year=2025,
+                week=1,
+                action="set",
+                pick=Pick("SEA", 1, 3.0),
+                recorded_at=REFRESH_ONE,
+                db_name=db_path,
+            )
+            snapshot_id = sqlite_service.find_decision_snapshot(
+                season_year=2025, survivor_week=1, db_name=db_path
+            )
+            self.assertIsNotNone(snapshot_id)
+            snapshot_events = sqlite_service.fetch_snapshot_events(
+                snapshot_id=snapshot_id, db_name=db_path
+            )
+            self.assertEqual(len(snapshot_events), 3)
+            self.assertEqual(snapshot_events[0].spread, 3.0)
+
+            # Persist and independently read the recommendation provenance.
+            recommendations = ALGORITHM_DISPATCH["best-spread"][1](
+                snapshot_events, 18, []
+            )
+            run_id = sqlite_service.save_optimization_run(
+                season_year=2025,
+                algorithm="best-spread",
+                split_week=18,
+                current_week=1,
+                parameters={"fixture": True},
+                code_revision="fixture-revision",
+                generated_at=REFRESH_TWO,
+                decision_snapshot_id=snapshot_id,
+                recommendations=recommendations,
+                db_name=db_path,
+            )
+            run = sqlite_service.fetch_optimization_run(run_id, db_name=db_path)
+            self.assertIsNotNone(run)
+            self.assertEqual(run["season_year"], 2025)
+            self.assertEqual(run["algorithm"], "best-spread")
+            self.assertEqual(run["split_week"], 18)
+            self.assertEqual(run["current_week"], 1)
+            self.assertEqual(run["parameters"], {"fixture": True})
+            self.assertEqual(run["code_revision"], "fixture-revision")
+            self.assertEqual(run["generated_at"], REFRESH_TWO)
+            self.assertEqual(run["decision_snapshot_id"], snapshot_id)
+            self.assertEqual(run["recommendations"], recommendations)
+
+            # Record the selected pick with both immutable provenance links.
+            linked_pick_event_id = sqlite_service.append_pick_event(
+                season_year=2025,
+                week=1,
+                action="set",
+                pick=Pick("SEA", 1, 3.0),
+                recorded_at=REFRESH_TWO,
+                decision_snapshot_id=snapshot_id,
+                optimization_run_id=run_id,
+                db_name=db_path,
+            )
+            self.assertGreater(linked_pick_event_id, initial_pick_event_id)
+            self.assertEqual(
+                database_rows(
+                    db_path,
+                    """
+                    SELECT pick_event_id, season_year, week, action, team, spread,
+                           decision_snapshot_id, optimization_run_id
+                    FROM pick_events
+                    WHERE pick_event_id = ?
+                    """,
+                    (linked_pick_event_id,),
+                ),
+                [
+                    (
+                        linked_pick_event_id,
+                        2025,
+                        1,
+                        "set",
+                        "SEA",
+                        3.0,
+                        snapshot_id,
+                        run_id,
+                    )
+                ],
+            )
+            self.assertEqual(
+                sqlite_service.fetch_current_picks(2025, db_name=db_path),
+                [Pick("SEA", 1, 3.0)],
+            )
+
+            # A later refresh changes current state but cannot mutate the snapshot.
+            events_updated = [
+                fixture_event(5001, 2025, 1, 5.5, "SEA", "DEN"),
+                fixture_event(5002, 2025, 2, 4.5, "KC", "BUF"),
+                fixture_event(5003, 2025, 3, 2.0, "MIA", "NYJ"),
+            ]
+            sqlite_service.save_current_state(
+                data=events_updated,
+                refresh_id="refresh-2",
+                observed_at=REFRESH_TWO,
+                db_name=db_path,
+            )
+            current_updated = sqlite_service.fetch_current_state(2025, db_name=db_path)
+            self.assertEqual(current_updated[0].spread, 5.5)
+            snapshot_events_after = sqlite_service.fetch_snapshot_events(
+                snapshot_id=snapshot_id, db_name=db_path
+            )
+            self.assertEqual(snapshot_events_after[0].spread, 3.0)
+
+            # Closing lines require an observation strictly before kickoff.
+            self.assertTrue(
+                sqlite_service.update_closing_line(
+                    event_id=5001,
+                    spread=4.0,
+                    observed_at=BEFORE_KICKOFF,
+                    kickoff_at=KICKOFF,
+                    db_name=db_path,
+                    season_year=2025,
+                    week=1,
+                    refresh_id="refresh-2",
+                )
+            )
+            closing = sqlite_service.fetch_closing_line(5001, db_name=db_path)
+            self.assertIsNotNone(closing)
+            self.assertEqual(closing["event_id"], 5001)
+            self.assertEqual(closing["spread"], 4.0)
+            self.assertEqual(closing["observed_at"], BEFORE_KICKOFF)
+            self.assertEqual(closing["kickoff_at"], KICKOFF)
+            self.assertEqual(closing["refresh_id"], "refresh-2")
+
+            # Final results are written and read independently.
+            self.assertTrue(
+                sqlite_service.upsert_game_result(
+                    event_id=5001,
+                    status="final",
+                    home_score=27,
+                    away_score=20,
+                    observed_at=AFTER_KICKOFF,
+                    corrected_at=None,
+                    db_name=db_path,
+                    season_year=2025,
+                    week=1,
+                )
+            )
+            result = sqlite_service.fetch_game_result(5001, db_name=db_path)
+            self.assertIsNotNone(result)
+            self.assertEqual(result["event_id"], 5001)
+            self.assertEqual(result["status"], "final")
+            self.assertEqual(result["home_score"], 27)
+            self.assertEqual(result["away_score"], 20)
+            self.assertEqual(result["observed_at"], AFTER_KICKOFF)
+            self.assertIsNone(result["corrected_at"])
+
+            # The incomplete fixture history is rejected in strict mode.
+            with self.assertRaisesRegex(ValueError, "Missing snapshot.*week 2"):
+                backtest.run_backtest(
+                    db_name=str(db_path),
+                    season=2025,
+                    algorithm="best-spread",
+                    split_week=18,
+                    mode="strict",
+                )
+
+            # Degraded mode is explicit and still uses the immutable snapshot.
+            weekly, aggregate = backtest.run_backtest(
+                db_name=str(db_path),
+                season=2025,
+                algorithm="best-spread",
+                split_week=18,
+                mode="degraded",
+            )
+            self.assertEqual(len(weekly), 1)
+            self.assertEqual(weekly[0].snapshot_id, snapshot_id)
+            self.assertEqual(weekly[0].decision_spread, 3.0)
+            self.assertEqual(weekly[0].closing_spread, 4.0)
+            self.assertEqual(aggregate.first_elimination_week, 1)
 
 
 if __name__ == "__main__":
