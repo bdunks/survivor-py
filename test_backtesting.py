@@ -69,9 +69,8 @@ def required_sqlite_function(test_case: unittest.TestCase, name: str, owner: str
 
 
 class PointInTimeContractTests(unittest.TestCase):
-    @unittest.expectedFailure
     def test_refresh_updates_current_state_without_schedule_history_copies(self):
-        # Expected failure: BACK-02 owns current-state persistence.
+        # BACK-02 owns current-state persistence.
         save_current_state = required_sqlite_function(
             self, "save_current_state", "BACK-02"
         )
@@ -292,11 +291,10 @@ class PointInTimeContractTests(unittest.TestCase):
 
         save.assert_not_called()
 
-    @unittest.expectedFailure
     def test_closing_line_accepts_newer_pre_kickoff_observations_only(self):
-        """Expected failure: BACK-03 owns closing-line observation rules."""
+        """BACK-02 owns closing-line observation rules."""
         update_closing_line = required_sqlite_function(
-            self, "update_closing_line", "BACK-03"
+            self, "update_closing_line", "BACK-02"
         )
 
         with temporary_database() as db_path:
@@ -541,14 +539,13 @@ class PointInTimeContractTests(unittest.TestCase):
                 [Pick("SEA", 1, 3.0), Pick("KC", 2, 4.5)],
             )
 
-    @unittest.expectedFailure
     def test_final_result_corrections_keep_observed_and_corrected_timestamps(self):
-        # Expected failure: BACK-03 owns final-result persistence and corrections.
+        # BACK-02 owns final-result persistence and corrections.
         upsert_game_result = required_sqlite_function(
-            self, "upsert_game_result", "BACK-03"
+            self, "upsert_game_result", "BACK-02"
         )
         fetch_game_result = required_sqlite_function(
-            self, "fetch_game_result", "BACK-03"
+            self, "fetch_game_result", "BACK-02"
         )
 
         with temporary_database() as db_path:

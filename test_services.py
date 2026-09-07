@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import app as application
+import services.sqlite as sqlite_service
 from models import EventOdds
 from services.cbssports import fetch_soup, parse_events
 from services.sqlite import fetch_odds_data, save_odds_data, setup_database
@@ -113,6 +114,41 @@ class DatabaseTests(unittest.TestCase):
             db_path.unlink()
             self.assertFalse(db_path.exists())
 
+    def test_application_connections_enforce_foreign_keys_and_import_legacy_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "legacy.db"
+            save_odds_data([fixture_event(1, 2025, 1, 3.0)], db_path)
+            setup_database(db_path)
+            setup_database(db_path)
+
+            with sqlite_service._connection(db_path) as connection:
+                self.assertEqual(
+                    connection.execute("PRAGMA foreign_keys").fetchone()[0], 1
+                )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(
+                        """
+                        INSERT INTO decision_snapshot_games (
+                            snapshot_id, event_id, season_year, week, home_team,
+                            away_team, short_name, spread
+                        ) VALUES (999, 2, 2025, 1, 'SEA', 'DEN', 'SEA @ DEN', 3.0)
+                        """
+                    )
+
+            with closing(sqlite3.connect(db_path)) as connection:
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT event_id, is_legacy FROM current_game_state"
+                    ).fetchall(),
+                    [(1, 1)],
+                )
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT count(*) FROM decision_snapshots"
+                    ).fetchone()[0],
+                    0,
+                )
+
     def test_setup_keeps_legacy_columns_but_drops_legacy_trigger(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = Path(directory) / "legacy.db"
@@ -160,6 +196,54 @@ class DatabaseTests(unittest.TestCase):
             self.assertIn("created_at", columns)
             self.assertIn("updated_at", columns)
             self.assertEqual(trigger_count, 0)
+
+    def test_current_state_freezes_an_immutable_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "snapshot.db"
+            original = [
+                fixture_event(1, 2025, 1, 3.0),
+                fixture_event(2, 2025, 2, 4.5),
+            ]
+            replacement = [
+                fixture_event(1, 2025, 1, 7.0),
+                original[1],
+            ]
+            sqlite_service.save_current_state(
+                original,
+                observed_at="2025-09-01T12:00:00+00:00",
+                refresh_id="refresh-1",
+                db_name=db_path,
+            )
+            snapshot_id = sqlite_service.freeze_decision_snapshot(
+                2025,
+                1,
+                "2025-09-01T13:00:00+00:00",
+                db_name=db_path,
+            )
+            sqlite_service.save_current_state(
+                replacement,
+                observed_at="2025-09-02T12:00:00+00:00",
+                refresh_id="refresh-2",
+                db_name=db_path,
+            )
+            self.assertEqual(
+                sqlite_service.freeze_decision_snapshot(
+                    2025,
+                    1,
+                    "2025-09-03T13:00:00+00:00",
+                    db_name=db_path,
+                ),
+                snapshot_id,
+            )
+            self.assertEqual(
+                [
+                    (event.event_id, event.spread)
+                    for event in sqlite_service.fetch_decision_snapshot(
+                        2025, 1, db_path
+                    )
+                ],
+                [(event.event_id, event.spread) for event in original],
+            )
 
 
 class AppDataFlowTests(unittest.TestCase):

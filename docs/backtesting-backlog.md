@@ -243,7 +243,7 @@ Checks: `uv run python -m unittest -v test_core test_services` passes (18 tests)
 
 ## BACK-02 — Add authoritative snapshot SQLite storage
 
-**Status:** pending
+**Status:** done
 **Depends on:** BACK-01
 
 ### Goal
@@ -296,7 +296,9 @@ git diff --check
 
 ### Handoff
 
-Not started.
+Implemented idempotent SQLite storage for refresh runs, current game state, immutable decision snapshots, closing lines, results, pick events, and optimization runs. Application connections enable foreign keys; legacy `averaged_odds` rows migrate to current-only state without creating snapshots. Added current/snapshot reads, timestamp guards, and focused indexes while preserving the legacy API.
+
+Checks: `uv run python -m unittest -v test_services` passes (7 tests); `mise run check` passes (32 tests, 7 expected failures owned by later tasks); `python -m compileall -q .` and `git diff --check` pass, including the required repeated checks.
 
 ---
 
