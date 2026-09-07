@@ -56,6 +56,14 @@ All algorithms respect manual picks and the one-team-per-season and one-pick-per
 
 `config.json` retains these preferences. Actual picks are season-aware `pick_events` in SQLite, not configuration entries.
 
+If an older `config.json` still has `picks`, choose its season explicitly and run the one-time migration endpoint:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/config/picks/migrate?season_year=2025"
+```
+
+`season_year` is required; the app never infers it. Valid picks are imported with a migration timestamp, a legacy-marked snapshot, and the original pick order, then `config.json` picks are cleared. Invalid or duplicate picks leave the file unchanged. Repeating the migration is safe. Legacy-marked snapshots are excluded from strict backtests because their original decision times are unknown.
+
 The app reads and writes `config.json` in the repository directory. Odds and pick history are stored in the local SQLite database `odds_data.db`. Both runtime files are ignored and should not be committed.
 
 ## CBS Sports data

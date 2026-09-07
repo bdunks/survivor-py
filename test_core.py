@@ -30,6 +30,7 @@ EXPECTED_API_ROUTES = {
     ("PUT", "/api/config/algorithm"),
     ("PUT", "/api/config/split-week"),
     ("POST", "/api/config/picks"),
+    ("POST", "/api/config/picks/migrate"),
     ("DELETE", "/api/config/picks/{week}"),
     ("DELETE", "/api/config/picks"),
     ("POST", "/api/data/refresh"),

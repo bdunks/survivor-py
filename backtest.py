@@ -7,6 +7,7 @@ without future leakage.
 import argparse
 import csv
 import json
+import sqlite3
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -16,6 +17,7 @@ from models import Pick
 from optimizer import ALGORITHM_DISPATCH
 from services.sqlite import (
     DEFAULT_DB_NAME,
+    LEGACY_SNAPSHOT_TRIGGER,
     fetch_closing_line,
     fetch_game_result,
     fetch_snapshot_events,
@@ -119,6 +121,20 @@ def run_backtest(
                 raise ValueError(f"Missing snapshot for {season} week {week}")
             continue
 
+        with sqlite3.connect(db_name) as conn:
+            snapshot_metadata = conn.execute(
+                "SELECT decision_at, trigger FROM decision_snapshots "
+                "WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        if snapshot_metadata is None:
+            raise ValueError(f"Missing snapshot for {season} week {week}")
+        decision_at, trigger = snapshot_metadata
+        if trigger == LEGACY_SNAPSHOT_TRIGGER:
+            if mode == "strict":
+                raise ValueError(f"Legacy snapshot for {season} week {week}")
+            continue
+
         snapshot_events = fetch_snapshot_events(snapshot_id, db_name)
         if not snapshot_events:
             if mode == "strict":
@@ -194,15 +210,6 @@ def run_backtest(
                 ties += 1
                 if first_elimination is None:
                     first_elimination = week
-
-        # Get snapshot decision time
-        import sqlite3
-
-        with sqlite3.connect(db_name) as conn:
-            decision_at = conn.execute(
-                "SELECT decision_at FROM decision_snapshots WHERE snapshot_id = ?",
-                (snapshot_id,),
-            ).fetchone()[0]
 
         # Mark counterfactual weeks (after first elimination)
         counterfactual = first_elimination is not None and week > first_elimination

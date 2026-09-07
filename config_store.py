@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,44 @@ def _validate_picks(values: object) -> list[Pick]:
     weeks = [pick.week for pick in picks]
     if len(weeks) != len(set(weeks)):
         raise ValueError("Each week can only have one pick")
+    return picks
+
+
+def load_legacy_picks(path: Path | str | None = None) -> list[Pick]:
+    """Load and validate picks left by the pre-ledger configuration."""
+    target = _path(path)
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Cannot read legacy picks: {error}") from error
+
+    if not isinstance(data, dict):
+        raise TypeError("Configuration must be a JSON object")
+    raw_picks = data.get("picks", [])
+    if not isinstance(raw_picks, list):
+        raise TypeError("Legacy picks must be a list")
+
+    picks: list[Pick] = []
+    for index, value in enumerate(raw_picks):
+        try:
+            pick = _pick_from_value(value)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                f"Invalid legacy pick at index {index}: {error}"
+            ) from error
+        if (
+            isinstance(pick.spread, bool)
+            or not isinstance(pick.spread, (int, float))
+            or not math.isfinite(float(pick.spread))
+        ):
+            raise TypeError(f"Invalid legacy pick spread at index {index}")
+        picks.append(pick)
+
+    _validate_picks(picks)
+    if len({pick.team for pick in picks}) != len(picks):
+        raise ValueError("Each team can only have one legacy pick")
     return picks
 
 
@@ -158,6 +197,13 @@ def save_config(config: dict[str, Any], path: Path | str | None = None) -> None:
             temporary.unlink()
         except FileNotFoundError:
             pass
+
+
+def clear_legacy_picks(path: Path | str | None = None) -> None:
+    """Remove migrated picks while retaining configuration preferences."""
+    config = load_config(path)
+    config["picks"] = []
+    save_config(config, path)
 
 
 def update_current_week(week: int, path: Path | str | None = None) -> None:

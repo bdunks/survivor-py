@@ -671,6 +671,7 @@ Add new entries here only when execution finds necessary work outside the active
 Do not implement a discovered follow-up in the same context unless the user explicitly changes the backlog scope.
 
 ### BACK-08 — Migrate existing config.json picks to SQLite ledger
+**Status:** done
 
 **Evidence:** `config.json` may contain existing `picks` entries from earlier manual UI usage. Those picks have no season, no timestamp, and no snapshot reference. `app.py` routes no longer read `config.picks`; the frontend now sends season-aware requests. Existing `picks` in local `config.json` files are orphaned.
 
@@ -681,6 +682,28 @@ Do not implement a discovered follow-up in the same context unless the user expl
 **Dependency:** BACK-07 (completed).
 
 **Risk if deferred:** Users with existing config picks will not see them in the UI after upgrading to the BACK-07+ application. Low risk if documented clearly in upgrade notes; medium risk if users assume the application will preserve their picks automatically.
+
+**Handoff:**
+
+**Implementation:**
+- Added strict legacy-pick loading and clearing in `config_store.py`; malformed, invalid, duplicate-week, duplicate-team, and non-finite entries are rejected without changing the source file.
+- Added `POST /api/config/picks/migrate?season_year={year}`. The season is required and NFL team validation happens before any database write.
+- Added an atomic, idempotent SQLite import that records `set` events and complete `legacy-migration` snapshots, preserves event order, refuses existing non-legacy snapshot conflicts, and clears config picks only after a successful import.
+- Strict backtests reject legacy-marked snapshots because their original decision times are unknown.
+- Added deterministic migration tests covering import, snapshot creation, config cleanup, idempotency, validation, explicit seasons, and strict-backtest exclusion.
+
+
+**Verification:**
+- `uv run python -m unittest -v test_core test_services test_migration`: 28 tests pass.
+- `uv run python -m unittest discover -v`: 60 tests pass.
+- `mise run check`: Ruff lint/format and all 60 tests pass.
+- `python -m compileall -q .`: passes.
+- `git diff --check`: passes.
+- Full codebase-memory index: generation `2026-09-07T22:44:38Z`, 440 nodes, 1,829 edges; all changed paths reported `no_recorded_issue`/`metadata_match`, with zero skipped or parse-partial files.
+
+
+**Limitations / deferred:**
+- Legacy decision timestamps cannot be recovered, so migrated snapshots remain excluded from strict backtests; the documented manual endpoint is the only migration path. BACK-09, BACK-10, and BACK-11 were not implemented.
 
 ### BACK-09 — Add explicit refresh-run success/failure/partial status to UI
 

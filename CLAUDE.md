@@ -32,7 +32,7 @@ mise run check
 - `services/__init__.py`: Explicit service exports.
 - `static/index.html`: Same-origin frontend with season/current-week controls, algorithm selection, projected-end control, manual picks, sorting, and the 18-week grid.
 - `backtest.py`: Offline backtest runner using immutable decision snapshots and stdlib-only argparse/json/csv output.
-- `test_core.py`, `test_services.py`, `test_backtesting.py`, `test_backtest.py`: Deterministic standard-library regression tests.
+- `test_core.py`, `test_services.py`, `test_backtesting.py`, `test_backtest.py`, `test_migration.py`: Deterministic standard-library regression tests.
 The retained API surface is:
 
 - `GET /api/config`
@@ -40,6 +40,7 @@ The retained API surface is:
 - `PUT /api/config/algorithm`
 - `PUT /api/config/split-week`
 - `POST /api/config/picks`
+- `POST /api/config/picks/migrate?season_year={year}`
 - `DELETE /api/config/picks/{week}`
 - `DELETE /api/config/picks`
 - `POST /api/data/refresh`
@@ -62,6 +63,7 @@ Refreshing reads `current_week` from the configuration, fetches CBS data from `m
 - `split_week`: the projected pool-end/optimization horizon
 
 Actual picks are stored in the SQLite database as a season-aware event ledger, not in `config.json`.
+Legacy picks left in an older config can be migrated with `POST /api/config/picks/migrate?season_year={year}`. The season is required and is never inferred. The migration validates all entries and duplicate weeks/teams, writes season-aware ledger events and legacy-marked snapshots, then clears `config.json` picks only after a successful import. Invalid input remains in the file for correction; repeating a successful migration is idempotent. Legacy-marked snapshots are excluded from strict backtests because their original decision times are unknown.
 `config.json` is the local JSON configuration written by the app. `odds_data.db` is the local SQLite odds database. Both files are ignored and must remain local.
 
 

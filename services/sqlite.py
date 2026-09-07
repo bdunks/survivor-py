@@ -11,6 +11,8 @@ from models import EventOdds, Pick
 
 DEFAULT_DB_NAME = "odds_data.db"
 
+LEGACY_SNAPSHOT_TRIGGER = "legacy-migration"
+
 
 Timestamp = str | datetime
 
@@ -999,6 +1001,44 @@ def fetch_game_result(
     return dict(zip(keys, row, strict=True))
 
 
+def _create_decision_snapshot(
+    connection: sqlite3.Connection,
+    season_year: int,
+    survivor_week: int,
+    decision_at: Timestamp,
+    trigger: str,
+) -> int:
+    connection.execute(
+        """
+        INSERT INTO decision_snapshots
+            (season_year, survivor_week, decision_at, trigger)
+        VALUES (?, ?, ?, ?)
+        """,
+        (season_year, survivor_week, _utc_timestamp(decision_at), trigger),
+    )
+    snapshot_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+    rows = connection.execute(
+        """
+        SELECT event_id, season_year, week, home_team, away_team,
+               short_name, spread, observed_at, refresh_id
+        FROM current_game_state
+        WHERE season_year = ?
+        ORDER BY event_id
+        """,
+        (season_year,),
+    ).fetchall()
+    connection.executemany(
+        """
+        INSERT INTO decision_snapshot_games (
+            snapshot_id, event_id, season_year, week, home_team, away_team,
+            short_name, spread, observed_at, refresh_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ((snapshot_id, *row) for row in rows),
+    )
+    return snapshot_id
+
+
 def append_pick_event(
     season_year: int,
     week: int,
@@ -1032,39 +1072,13 @@ def append_pick_event(
                 """,
                 (season_year, week),
             ).fetchone()
-            if existing is None:
-                connection.execute(
-                    """
-                    INSERT INTO decision_snapshots
-                        (season_year, survivor_week, decision_at, trigger)
-                    VALUES (?, ?, ?, 'pick')
-                    """,
-                    (season_year, week, _utc_timestamp(recorded_at)),
+            decision_snapshot_id = (
+                _create_decision_snapshot(
+                    connection, season_year, week, recorded_at, "pick"
                 )
-                decision_snapshot_id = connection.execute(
-                    "SELECT last_insert_rowid()"
-                ).fetchone()[0]
-                rows = connection.execute(
-                    """
-                    SELECT event_id, season_year, week, home_team, away_team,
-                           short_name, spread, observed_at, refresh_id
-                    FROM current_game_state
-                    WHERE season_year = ?
-                    ORDER BY event_id
-                    """,
-                    (season_year,),
-                ).fetchall()
-                connection.executemany(
-                    """
-                    INSERT INTO decision_snapshot_games (
-                        snapshot_id, event_id, season_year, week, home_team,
-                        away_team, short_name, spread, observed_at, refresh_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    ((decision_snapshot_id, *row) for row in rows),
-                )
-            else:
-                decision_snapshot_id = existing[0]
+                if existing is None
+                else existing[0]
+            )
         connection.execute(
             """
             INSERT INTO pick_events (
@@ -1084,6 +1098,99 @@ def append_pick_event(
             ),
         )
         return connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def migrate_legacy_pick_events(
+    season_year: int,
+    picks: Iterable[Pick],
+    recorded_at: Timestamp,
+    db_name: str | Path = DEFAULT_DB_NAME,
+) -> int:
+    if type(season_year) is not int or not 2020 <= season_year <= 2030:
+        raise ValueError("Season year must be between 2020 and 2030")
+    legacy_picks = list(picks)
+    if not legacy_picks:
+        return 0
+    if any(not isinstance(pick, Pick) for pick in legacy_picks):
+        raise TypeError("legacy picks must be Pick values")
+
+    weeks = [pick.week for pick in legacy_picks]
+    if any(type(week) is not int or not 1 <= week <= 18 for week in weeks):
+        raise ValueError("Legacy pick weeks must be between 1 and 18")
+    if len(weeks) != len(set(weeks)):
+        raise ValueError("Each week can only have one legacy pick")
+    teams = [pick.team for pick in legacy_picks]
+    if any(not isinstance(team, str) or not team for team in teams):
+        raise ValueError("Legacy pick teams must be non-empty strings")
+    if len(teams) != len(set(teams)):
+        raise ValueError("Each team can only have one legacy pick")
+
+    recorded = _utc_timestamp(recorded_at)
+    if recorded is None:
+        raise ValueError("recorded_at is required")
+
+    imported = 0
+    with _connection(db_name) as connection:
+        _setup_database(connection)
+        for pick in legacy_picks:
+            existing = connection.execute(
+                """
+                SELECT snapshot_id, trigger
+                FROM decision_snapshots
+                WHERE season_year = ? AND survivor_week = ?
+                """,
+                (season_year, pick.week),
+            ).fetchone()
+            if existing is not None:
+                snapshot_id, trigger = existing
+                if trigger != LEGACY_SNAPSHOT_TRIGGER:
+                    raise ValueError(
+                        f"Cannot migrate week {pick.week}: "
+                        "decision snapshot already exists"
+                    )
+                previous = connection.execute(
+                    """
+                    SELECT action, team, spread
+                    FROM pick_events
+                    WHERE season_year = ? AND week = ?
+                      AND decision_snapshot_id = ?
+                    ORDER BY pick_event_id DESC
+                    LIMIT 1
+                    """,
+                    (season_year, pick.week, snapshot_id),
+                ).fetchone()
+                if previous != ("set", pick.team, pick.spread):
+                    raise ValueError(
+                        f"Legacy migration already contains a different pick "
+                        f"for week {pick.week}"
+                    )
+                continue
+
+            snapshot_id = _create_decision_snapshot(
+                connection,
+                season_year,
+                pick.week,
+                recorded,
+                LEGACY_SNAPSHOT_TRIGGER,
+            )
+            connection.execute(
+                """
+                INSERT INTO pick_events (
+                    season_year, week, action, team, spread, recorded_at,
+                    decision_snapshot_id, optimization_run_id
+                ) VALUES (?, ?, 'set', ?, ?, ?, ?, NULL)
+                """,
+                (
+                    season_year,
+                    pick.week,
+                    pick.team,
+                    pick.spread,
+                    recorded,
+                    snapshot_id,
+                ),
+            )
+            imported += 1
+    return imported
 
 
 def fetch_current_picks(

@@ -12,7 +12,9 @@ from api_models import (
     PickResponse,
 )
 from config_store import (
+    clear_legacy_picks,
     load_config,
+    load_legacy_picks,
     update_algorithm,
     update_current_week,
     update_split_week,
@@ -29,6 +31,7 @@ from services import (
     fetch_odds_data,
     find_decision_snapshot,
     find_latest_optimization_run,
+    migrate_legacy_pick_events,
     save_optimization_run,
 )
 
@@ -212,6 +215,39 @@ def add_pick(pick_request: PickRequest):
     return {
         "message": f"Added pick for week {pick_request.week}",
         "pick": PickResponse.model_validate(pick, from_attributes=True),
+    }
+
+
+@app.post("/api/config/picks/migrate")
+def migrate_config_picks(
+    season_year: int = Query(..., ge=2020, le=2030),
+):
+    """Migrate legacy config picks for an explicitly selected season."""
+    if type(season_year) is not int or not 2020 <= season_year <= 2030:
+        raise HTTPException(
+            status_code=400, detail="Season year must be between 2020 and 2030"
+        )
+    try:
+        picks = load_legacy_picks()
+        invalid_teams = sorted(
+            {pick.team for pick in picks if pick.team not in NFL_TEAMS}
+        )
+        if invalid_teams:
+            raise ValueError("Invalid legacy pick team(s): " + ", ".join(invalid_teams))
+        migrated_count = (
+            migrate_legacy_pick_events(season_year, picks, datetime.now(UTC))
+            if picks
+            else 0
+        )
+        if picks:
+            clear_legacy_picks()
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {
+        "message": f"Migrated {migrated_count} legacy picks for {season_year}",
+        "season_year": season_year,
+        "migrated_count": migrated_count,
+        "legacy_picks_found": len(picks),
     }
 
 
