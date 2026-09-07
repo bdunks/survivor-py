@@ -157,14 +157,3 @@ ALGORITHM_DISPATCH = {
         find_optimal_picks_weighted_future_value,
     ),
 }
-
-
-class PickOptimizer:
-    """Compatibility namespace for the pre-SIMP-05 optimizer API."""
-
-    find_optimal_picks_best_spread = staticmethod(find_optimal_picks_best_spread)
-    find_optimal_picks_back_to_front = staticmethod(find_optimal_picks_back_to_front)
-    calculate_future_value = staticmethod(calculate_future_value)
-    find_optimal_picks_weighted_future_value = staticmethod(
-        find_optimal_picks_weighted_future_value
-    )

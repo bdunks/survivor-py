@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -71,7 +72,7 @@ class DatabaseTests(unittest.TestCase):
             db_path = Path(directory) / "odds.db"
             setup_database(db_path)
 
-            with sqlite3.connect(db_path) as connection:
+            with closing(sqlite3.connect(db_path)) as connection:
                 columns = [
                     row[1]
                     for row in connection.execute("PRAGMA table_info(averaged_odds)")
@@ -115,7 +116,7 @@ class DatabaseTests(unittest.TestCase):
     def test_setup_keeps_legacy_columns_but_drops_legacy_trigger(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = Path(directory) / "legacy.db"
-            with sqlite3.connect(db_path) as connection:
+            with closing(sqlite3.connect(db_path)) as connection:
                 connection.execute(
                     """
                     CREATE TABLE averaged_odds (
@@ -143,9 +144,10 @@ class DatabaseTests(unittest.TestCase):
                     END
                     """
                 )
+                connection.commit()
 
             setup_database(db_path)
-            with sqlite3.connect(db_path) as connection:
+            with closing(sqlite3.connect(db_path)) as connection:
                 columns = [
                     row[1]
                     for row in connection.execute("PRAGMA table_info(averaged_odds)")

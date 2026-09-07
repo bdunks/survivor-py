@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app as application
+import optimizer
 from config_store import (
     load_config,
     update_algorithm,
@@ -15,7 +16,6 @@ from config_store import (
     update_split_week,
 )
 from models import EventOdds, Pick
-from optimizer import PickOptimizer
 
 ALGORITHM_METHODS = {
     "best-spread": "find_optimal_picks_best_spread",
@@ -88,11 +88,10 @@ def pick_for_week(picks, week):
     return next(pick for pick in picks if pick.week == week)
 
 
-class OptimizerCharacterizationTests(unittest.TestCase):
+class OptimizerTests(unittest.TestCase):
     def test_algorithms_preserve_user_pick_and_pick_invariants(self):
         events = horizon_events()
         user_pick = Pick(team="LCK", week=5, spread=99.0)
-        optimizer = PickOptimizer()
 
         for split_week in (10, 14, 18):
             for slug, method_name in ALGORITHM_METHODS.items():
@@ -112,7 +111,6 @@ class OptimizerCharacterizationTests(unittest.TestCase):
     def test_post_horizon_user_pick_is_preserved_in_the_18_week_grid(self):
         events = horizon_events()
         user_pick = Pick(team="LCK", week=16, spread=99.0)
-        optimizer = PickOptimizer()
 
         for split_week in (10, 14):
             for slug, method_name in ALGORITHM_METHODS.items():
@@ -126,7 +124,6 @@ class OptimizerCharacterizationTests(unittest.TestCase):
 
     def test_split_week_controls_future_value_through_10_14_and_18(self):
         events = horizon_events()
-        optimizer = PickOptimizer()
 
         self.assertEqual(
             {
@@ -187,7 +184,7 @@ class OptimizerCharacterizationTests(unittest.TestCase):
         )
 
 
-class ConfigurationCharacterizationTests(unittest.TestCase):
+class ConfigurationTests(unittest.TestCase):
     def test_defaults_and_malformed_input_are_isolated_from_repository_config(self):
         defaults = {
             "current_week": 1,
@@ -294,7 +291,7 @@ class ConfigurationCharacterizationTests(unittest.TestCase):
                 update_pick(Pick("SEA", 19, 1.0))
 
 
-class EventOddsCharacterizationTests(unittest.TestCase):
+class EventOddsTests(unittest.TestCase):
     def test_event_odds_parses_at_vs_and_surrounding_whitespace(self):
         cases = (
             ("SEA @ DEN", "SEA", "DEN"),

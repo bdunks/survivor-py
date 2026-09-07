@@ -241,7 +241,7 @@ If assertion 5 or 8 fails against current behavior, record it as an expected cor
 
 ### Handoff
 
-Added `test_simp01.py` with deterministic in-memory fixtures and temporary-directory configuration tests; production code was unchanged.
+Added `test_core.py` with deterministic in-memory fixtures and temporary-directory configuration tests; production code was unchanged.
 
 Characterization tests cover all three optimizer methods, user-pick preservation, unique/sorted 18-week plans at split weeks 10/14/18, valid `EventOdds` parsing, config load/save/defaults/replacement, stable algorithm slugs, and the current API route inventory.
 
@@ -462,8 +462,8 @@ Replace state-free service classes and generic single-use helpers with direct fu
 
 Replaced the state-free CBS and SQLite service classes with module-level functions. `parse_events` accepts saved HTML or parsed soup, retains the request timeout and HTTP status check, keeps numeric/`PK` spreads, and skips invalid cards; `EventOdds` now rejects malformed matchups instead of producing `UNK` teams.
 SQLite functions own and close local connections, preserve upsert and season filtering, create only the current columns, retain legacy extra columns, and drop only the unused legacy trigger. Updated all app data paths and replaced wildcard service exports with explicit exports.
-Added `test_simp04.py` for fixture parsing, temporary-database lifecycle, and refresh/events API flows; updated SIMP-01's malformed-matchup assertion to pass.
-Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, focused `uv run python -m unittest test_simp04 -v`, and a dependency-free ASGI refresh/events smoke check all pass. The optional FastAPI `TestClient` smoke requires undeclared `httpx`, so no dependency was added. The graph was refreshed with no skipped or parse-partial files.
+Added `test_services.py` for fixture parsing, temporary-database lifecycle, and refresh/events API flows; updated SIMP-01's malformed-matchup assertion to pass.
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, focused `uv run python -m unittest test_services -v`, and a dependency-free ASGI refresh/events smoke check all pass. The optional FastAPI `TestClient` smoke requires undeclared `httpx`, so no dependency was added. The graph was refreshed with no skipped or parse-partial files.
 
 ---
 
@@ -526,7 +526,7 @@ Reworked `optimizer.py` around module-level algorithm functions and the single `
 
 The shared selector now names the optimization horizon explicitly, selects horizon events before presentation-only later weeks, retains the 18-week grid, and preserves post-horizon user picks. Duplicate user weeks/teams are rejected. Future value is a direct aggregation; the unused all-team helper, recursive pass/depth guard, nonlocal state, impossible `None` path, and stale CSV logging comments are gone. The fixed-point replacement loop accepts only strictly higher spreads. Weighted exponent `2.5` and strategy constants are unchanged. Added a regression for post-horizon user-pick preservation.
 
-Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, and focused `uv run python -m unittest -v test_simp01 test_simp04` (16 tests) all pass. The full graph was refreshed after the code changes with no skipped or parse-partial files; changed-path coverage reports no recorded issues.
+Checks: `uv sync --locked`, `mise run check`, `mise run lint`, `mise run format-check`, `mise run test`, `python -m compileall -q .`, and focused `uv run python -m unittest -v test_core test_services` (16 tests) all pass. The full graph was refreshed after the code changes with no skipped or parse-partial files; changed-path coverage reports no recorded issues.
 
 ---
 
@@ -829,7 +829,7 @@ Completed the independent final audit at HEAD `480e2fae0a2c2a9dbc3cbec93e8a25a16
 
 **Routes, files, imports, and dependencies.** The final architecture has exactly 11 routes: the 10 retained APIs plus the static `ANY /` mount; no status, teams, CSV, or all-algorithm route remains. The tracked tree has 21 files and 10 Python files, matching the target architecture. Imports are explicit, with no wildcard imports. `pyproject.toml` declares exactly `beautifulsoup4`, `fastapi`, `pydantic`, `requests`, and `uvicorn`; the lock root has the same five direct dependencies. Each has a concrete use: BeautifulSoup parsing, FastAPI serving/routing, Pydantic API validation, Requests CBS fetching, and Uvicorn's Mise development command. No duplicate dependency declaration remains.
 
-**Symbols and traces.** `optimizer.ALGORITHM_DISPATCH` is defined once and is the sole validation/selection/display mapping. All three public optimizer entry points trace through `_find_optimal_picks` (LSP-resolved hop-one calls). `config_store.update_current_week`, `update_algorithm`, `update_split_week`, `update_pick`, `clear_pick`, and `clear_all_picks` each trace through `load_config` and `save_config`, with the expected single FastAPI handler caller. The small `PickOptimizer` static compatibility namespace is the documented SIMP-05 compatibility shim, not a factory, plugin, or new layer.
+**Symbols and traces.** `optimizer.ALGORITHM_DISPATCH` is defined once and is the sole validation/selection/display mapping. All three public optimizer entry points trace through `_find_optimal_picks` (LSP-resolved hop-one calls). `config_store.update_current_week`, `update_algorithm`, `update_split_week`, `update_pick`, `clear_pick`, and `clear_all_picks` each trace through `load_config` and `save_config`, with the expected single FastAPI handler caller. The pre-SIMP-05 `PickOptimizer` compatibility namespace was removed; tests call the module-level optimizer functions directly.
 
 **Required commands.** `uv sync --locked` exited 0. `mise run check` exited 0: Ruff passed and the standard-library suite ran 16 tests with `OK`. `python -m compileall -q .` exited 0. `git diff --check` reports only trailing spaces used for Markdown hard breaks in earlier handoff metadata; this is non-source historical formatting and was left unchanged to keep SIMP-09 limited to its Status/Handoff update. An additional `lsp_diagnostics` run found six `ty` typing diagnostics in `app.py`/`config_store.py`; `ty` is not part of the repository toolchain, and the diagnostics do not affect the passing lint, tests, runtime smoke, or browser workflow, so no follow-up was opened.
 

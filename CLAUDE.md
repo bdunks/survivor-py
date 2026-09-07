@@ -35,7 +35,7 @@ python -m compileall -q .
 - `services/sqlite.py`: Fixed-purpose SQLite setup, odds upsert, and season-filtered reads.
 - `services/__init__.py`: Explicit service exports.
 - `static/index.html`: Same-origin frontend with season/current-week controls, algorithm selection, projected-end control, manual picks, sorting, and the 18-week grid.
-- `test_simp01.py`, `test_simp04.py`: Deterministic standard-library regression tests.
+- `test_core.py`, `test_services.py`: Deterministic standard-library regression tests.
 
 The retained API surface is:
 
